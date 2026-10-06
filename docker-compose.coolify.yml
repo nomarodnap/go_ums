@@ -8,8 +8,8 @@ services:
     image: nginx:alpine
     container_name: ums_nginx
     restart: unless-stopped
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ums_uploads:/var/www/uploads:ro
