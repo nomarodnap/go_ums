@@ -6,7 +6,10 @@ import { join } from "path";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const BACKEND_URL =
+  process.env.INTERNAL_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8080";
 
 async function saveFile(file: File | null) {
   if (!file || file.size === 0) return null;

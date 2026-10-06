@@ -10,8 +10,9 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
 import Image from "next/image";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { PageTransition } from "@/components/motion/page-transition";
 
 export default function DashboardLayout({
   children,
@@ -19,6 +20,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: userData, isLoading, isError } = useGetCurrentUser();
 
   useEffect(() => {
@@ -75,7 +77,9 @@ export default function DashboardLayout({
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6 md:p-8 max-w-[1600px] w-full mx-auto">
-          {children}
+          <PageTransition key={pathname} className="flex flex-1 flex-col gap-6">
+            {children}
+          </PageTransition>
         </div>
       </SidebarInset>
     </SidebarProvider>

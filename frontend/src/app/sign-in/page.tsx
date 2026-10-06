@@ -16,6 +16,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useLogin, getGetCurrentUserQueryKey } from "@/lib/api/generated/auth/auth";
 import { useQueryClient } from "@tanstack/react-query";
+import { motion } from "motion/react";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
@@ -88,7 +89,13 @@ export default function SignInPage() {
       <div className="absolute -top-40 -left-40 size-96 rounded-full bg-blue-500/15 dark:bg-blue-600/20 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-teal-500/15 dark:bg-teal-600/20 blur-3xl pointer-events-none" />
 
-      <Card className="relative w-full max-w-[420px] rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-2xl shadow-2xl p-2 sm:p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="relative w-full max-w-[420px]"
+      >
+        <Card className="w-full rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-2xl shadow-2xl p-2 sm:p-4">
         <CardHeader className="space-y-3 text-center pb-4">
           <div className="mx-auto flex size-20 items-center justify-center rounded-2xl bg-white dark:bg-slate-900/90 p-2 shadow-sm border border-black/[0.06] dark:border-white/[0.1]">
             <Image
@@ -208,6 +215,7 @@ export default function SignInPage() {
           </div>
         </CardContent>
       </Card>
+      </motion.div>
     </div>
   );
 }

@@ -24,8 +24,11 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:password123@postgres:5432/new_ums?sslmode=disable"
+      REDIS_URL: "redis://:qBte3j7A4S1p0y4hRNev5AkO@192.168.171.97:6379"
       JWT_SECRET: "fisheries-super-secret-jwt-key-2026-very-secure"
       CORS_ORIGIN: "http://localhost:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
     depends_on:
@@ -46,3 +49,4 @@ services:
 
 volumes:
   pgdata:
+

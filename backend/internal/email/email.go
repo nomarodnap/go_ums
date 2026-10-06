@@ -106,11 +106,8 @@ func (s *EmailService) SendMail(toEmail, subject, htmlBody string) error {
 	}
 	message.WriteString("\r\n" + htmlBody)
 
-	addr := fmt.Sprintf("%s:%s", s.cfg.SMTPHost, s.cfg.SMTPPort)
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = s.cfg.SMTPHost
-	}
+	addr := net.JoinHostPort(s.cfg.SMTPHost, s.cfg.SMTPPort)
+	host := s.cfg.SMTPHost
 
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {

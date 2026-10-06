@@ -11,6 +11,7 @@ import (
 	"github.com/dof/ums-backend/internal/auth"
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
+	"github.com/dof/ums-backend/internal/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,7 +55,12 @@ type LogoutOutput struct {
 	}
 }
 
-func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, emailService *email.EmailService) {
+func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, emailService *email.EmailService, taskDistributor ...worker.TaskDistributor) {
+	var distributor worker.TaskDistributor
+	if len(taskDistributor) > 0 {
+		distributor = taskDistributor[0]
+	}
+
 	// Ensure verification table exists
 	_, _ = pool.Exec(context.Background(), `
 		CREATE TABLE IF NOT EXISTS verification (
@@ -239,9 +245,16 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		}
 
 		resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
-		if err := emailService.SendResetPasswordEmail(userEmail, name, resetURL); err != nil {
-			log.Printf("Failed to send reset email to %s: %v", userEmail, err)
-			return nil, huma.Error500InternalServerError("ไม่สามารถส่งอีเมลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง")
+		if distributor != nil {
+			if err := distributor.DistributeTaskSendEmail(ctx, userEmail, name, resetURL); err != nil {
+				log.Printf("[Auth] Failed to enqueue reset email via Asynq, fallback to sync: %v", err)
+				_ = emailService.SendResetPasswordEmail(userEmail, name, resetURL)
+			}
+		} else {
+			if err := emailService.SendResetPasswordEmail(userEmail, name, resetURL); err != nil {
+				log.Printf("Failed to send reset email to %s: %v", userEmail, err)
+				return nil, huma.Error500InternalServerError("ไม่สามารถส่งอีเมลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง")
+			}
 		}
 
 		out := &struct {

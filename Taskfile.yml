@@ -1,0 +1,174 @@
+version: '3'
+
+tasks:
+  default:
+    desc: แสดงรายการคำสั่งทั้งหมดที่สามารถใช้งานได้
+    cmds:
+      - task --list
+    silent: true
+
+  # ==========================================
+  # Development Tasks
+  # ==========================================
+  dev:
+    desc: เริ่มต้นรันทั้ง Backend (8080) และ Frontend (3000) พร้อมกัน
+    deps:
+      - dev:backend
+      - dev:frontend
+
+  dev:backend:
+    desc: รัน Go Backend API Server (พอร์ต 8080)
+    dir: backend
+    cmds:
+      - go run cmd/server/main.go
+
+  dev:worker:
+    desc: รัน Asynq Background Worker แบบ Standalone
+    dir: backend
+    cmds:
+      - go run cmd/worker/main.go
+
+  dev:frontend:
+    desc: รัน Next.js Frontend (พอร์ต 3000)
+    dir: frontend
+    cmds:
+      - npm run dev
+
+  # ==========================================
+  # Code Generation Tasks
+  # ==========================================
+  gen:
+    desc: อัปเดต Type-safe Code ทั้งระบบ (sqlc + Orval)
+    cmds:
+      - task: gen:sqlc
+      - task: gen:api
+
+  gen:sqlc:
+    desc: สร้าง Go Models และ Queries จาก SQL DDL ด้วย sqlc
+    dir: backend
+    cmds:
+      - sqlc generate
+
+  gen:api:
+    desc: สร้าง TypeScript Types และ React Query Hooks ด้วย Orval จาก OpenAPI
+    dir: frontend
+    cmds:
+      - npm run generate:api
+
+  # ==========================================
+  # Database Migration Tasks (Goose)
+  # ==========================================
+  migrate:status:
+    desc: ตรวจสอบสถานะ Database Migrations (Goose)
+    dir: backend
+    dotenv: ['.env', '../.env']
+    cmds:
+      - goose -dir db/migrations postgres "$DATABASE_URL" status
+
+  migrate:up:
+    desc: รัน Migration ทั้งหมดเข้าสู่ฐานข้อมูล (Goose Up)
+    dir: backend
+    dotenv: ['.env', '../.env']
+    cmds:
+      - goose -dir db/migrations postgres "$DATABASE_URL" up
+
+  migrate:down:
+    desc: Rollback Migration ย้อนกลับ 1 Step (Goose Down)
+    dir: backend
+    dotenv: ['.env', '../.env']
+    cmds:
+      - goose -dir db/migrations postgres "$DATABASE_URL" down
+
+  migrate:create:
+    desc: สร้างไฟล์ Migration ใหม่ (เช่น task migrate:create -- add_new_column)
+    dir: backend
+    cmds:
+      - goose -dir db/migrations create {{.CLI_ARGS}} sql
+
+  # ==========================================
+  # Build Tasks
+  # ==========================================
+  build:
+    desc: คอมไพล์โปรเจกต์ทั้ง Backend, Worker และ Frontend สำหรับ Production
+    cmds:
+      - task: build:backend
+      - task: build:worker
+      - task: build:frontend
+
+  build:backend:
+    desc: คอมไพล์ Go Backend เป็นไบนารีไฟล์ใน backend/bin/server.exe
+    dir: backend
+    cmds:
+      - cmd: powershell -Command "if (Test-Path bin/server.exe) { Remove-Item -Force bin/server.exe }"
+      - go build -o bin/server.exe ./cmd/server
+
+  build:worker:
+    desc: คอมไพล์ Asynq Worker เป็นไบนารีไฟล์ใน backend/bin/worker.exe
+    dir: backend
+    cmds:
+      - cmd: powershell -Command "if (Test-Path bin/worker.exe) { Remove-Item -Force bin/worker.exe }"
+      - go build -o bin/worker.exe ./cmd/worker
+
+  build:frontend:
+    desc: คอมไพล์ Next.js Frontend ด้วย Turbopack
+    dir: frontend
+    cmds:
+      - npm run build
+
+  # ==========================================
+  # Test & Quality
+  # ==========================================
+  test:
+    desc: รัน Test ของ Go Backend ทั้งหมด
+    dir: backend
+    cmds:
+      - go test -v ./...
+
+  # ==========================================
+  # Docker Compose
+  # ==========================================
+  docker:up:
+    desc: เริ่มต้นระบบ Full-Stack ผ่าน Docker Compose (Postgres + Backend + Frontend)
+    cmds:
+      - docker-compose up --build -d
+
+  docker:down:
+    desc: หยุดและลบ Containers ของ Docker Compose
+    cmds:
+      - docker-compose down
+
+  docker:logs:
+    desc: ดู Logs จากทุก Service ใน Docker Compose แบบ Realtime
+    cmds:
+      - docker-compose logs -f
+
+  # ==========================================
+  # Redis Tasks
+  # ==========================================
+  redis:ping:
+    desc: ทดสอบการเชื่อมต่อกับ Redis Server (192.168.171.97:6379)
+    cmds:
+      - cmd: redis-cli -h 192.168.171.97 -p 6379 -a qBte3j7A4S1p0y4hRNev5AkO ping
+        ignore_error: true
+
+  redis:cli:
+    desc: เข้าใช้งาน redis-cli กับ Redis Server ภายนอก (192.168.171.97:6379)
+    cmds:
+      - redis-cli -h 192.168.171.97 -p 6379 -a qBte3j7A4S1p0y4hRNev5AkO
+
+  # ==========================================
+  # Setup & Maintenance
+  # ==========================================
+  install:
+    desc: ติดตั้ง Dependencies ทั้งหมด (Go modules และ npm packages)
+    cmds:
+      - cmd: go mod download
+        dir: backend
+      - cmd: npm install
+        dir: frontend
+
+  clean:
+    desc: ล้างโฟลเดอร์ Build และ Cache ชั่วคราว (bin, .next)
+    cmds:
+      - cmd: powershell -Command "if (Test-Path backend/bin) { Remove-Item -Recurse -Force backend/bin }"
+      - cmd: powershell -Command "if (Test-Path frontend/.next) { Remove-Item -Recurse -Force frontend/.next }"
