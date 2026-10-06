@@ -3,7 +3,7 @@ name: Build & Deploy to Production (GHCR & Coolify)
 on:
   push:
     branches:
-      - production
+      - main
   workflow_dispatch: # อนุญาตให้กดสั่งรันแมนนวลได้จาก GitHub Actions UI
 
 env:
