@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const BACKEND_URL =
+  process.env.INTERNAL_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8080";
 
 export async function flagManualAnomaly(billId: string, reason: string) {
   try {

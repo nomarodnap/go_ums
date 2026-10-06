@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, Prompt } from "next/font/google";
+import "lenis/dist/lenis.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/lib/providers/query-provider";
+import { SmoothScrollProvider } from "@/lib/providers/smooth-scroll-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import NextTopLoader from "nextjs-toploader";
@@ -52,8 +54,10 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <TooltipProvider>{children}</TooltipProvider>
-            <Toaster position="top-right" richColors />
+            <SmoothScrollProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+              <Toaster position="top-right" richColors />
+            </SmoothScrollProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

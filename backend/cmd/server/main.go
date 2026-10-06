@@ -19,9 +19,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dof/ums-backend/internal/auth"
+	"github.com/dof/ums-backend/internal/cache"
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
 	"github.com/dof/ums-backend/internal/handlers"
+	"github.com/dof/ums-backend/internal/worker"
 )
 
 func main() {
@@ -49,7 +51,11 @@ func main() {
 		}
 	}
 
-	// 2. Setup Chi Router
+	// 2. Connect to Redis
+	redisService := cache.NewRedisService(cfg.RedisURL)
+	defer redisService.Close()
+
+	// 3. Setup Chi Router
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
@@ -85,15 +91,36 @@ func main() {
 	// Initialize Email Service
 	emailService := email.NewEmailService(cfg)
 
+	// Initialize Asynq Background Task Queue (Redis)
+	var taskDistributor worker.TaskDistributor
+	taskDistributor, err = worker.NewRedisTaskDistributor(cfg.RedisURL)
+	if err != nil {
+		log.Printf("[Asynq] Warning: Failed to initialize task distributor: %v", err)
+	} else {
+		defer taskDistributor.Close()
+	}
+
+	taskProcessor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
+	if err != nil {
+		log.Printf("[Asynq] Warning: Failed to initialize task processor: %v", err)
+	} else {
+		go func() {
+			if err := taskProcessor.Start(); err != nil {
+				log.Printf("[Asynq Worker] Server stopped: %v", err)
+			}
+		}()
+		defer taskProcessor.Shutdown()
+	}
+
 	// 4. Register Domain Handlers
-	handlers.RegisterAuthRoutes(api, pool, cfg, emailService)
+	handlers.RegisterAuthRoutes(api, pool, cfg, emailService, taskDistributor)
 	handlers.RegisterDepartmentRoutes(api, pool)
 	handlers.RegisterBillRoutes(api, pool)
 	handlers.RegisterAuditRoutes(api, pool)
 	handlers.RegisterBudgetRoutes(api, pool)
 	handlers.RegisterDashboardRoutes(api, pool)
 	handlers.RegisterNotificationRoutes(api, pool)
-	handlers.RegisterUserRoutes(api, pool, cfg, emailService)
+	handlers.RegisterUserRoutes(api, pool, cfg, emailService, taskDistributor)
 
 	// 5. Health check
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {

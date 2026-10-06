@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port          string
 	DatabaseURL   string
+	RedisURL      string
 	JWTSecret     string
 	CORSOrigin    string
 	UploadDir     string
@@ -81,9 +82,15 @@ func LoadConfig() *Config {
 		smtpPort = "587"
 	}
 
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379"
+	}
+
 	return &Config{
 		Port:          port,
 		DatabaseURL:   dbURL,
+		RedisURL:      redisURL,
 		JWTSecret:     jwtSecret,
 		CORSOrigin:    corsOrigin,
 		UploadDir:     uploadDir,

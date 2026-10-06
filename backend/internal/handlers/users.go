@@ -11,6 +11,7 @@ import (
 	"github.com/dof/ums-backend/internal/auth"
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
+	"github.com/dof/ums-backend/internal/worker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -58,7 +59,12 @@ type SingleUserOutput struct {
 	Body ManageUserDTO `json:"body"`
 }
 
-func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, emailService *email.EmailService) {
+func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, emailService *email.EmailService, taskDistributor ...worker.TaskDistributor) {
+	var distributor worker.TaskDistributor
+	if len(taskDistributor) > 0 {
+		distributor = taskDistributor[0]
+	}
+
 	// List Users (Admin / Staff)
 	huma.Register(api, huma.Operation{
 		OperationID: "listUsers",
@@ -157,20 +163,23 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 				hasPassword = true
 			}
 		} else {
-			// Send initial password setup email asynchronously
-			go func() {
-				token := uuid.New().String()
-				verID := uuid.New().String()
-				expiresAt := time.Now().Add(24 * time.Hour)
-				_, err := pool.Exec(context.Background(), `
-					INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
-					VALUES ($1, $2, $3, $4, NOW(), NOW())
-				`, verID, input.Body.Email, token, expiresAt)
-				if err == nil {
-					resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
+			// Send initial password setup email asynchronously via Asynq
+			token := uuid.New().String()
+			verID := uuid.New().String()
+			expiresAt := time.Now().Add(24 * time.Hour)
+			_, _ = pool.Exec(ctx, `
+				INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, NOW(), NOW())
+			`, verID, input.Body.Email, token, expiresAt)
+
+			resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
+			if distributor != nil {
+				_ = distributor.DistributeTaskSendEmail(ctx, input.Body.Email, input.Body.Name, resetURL)
+			} else {
+				go func() {
 					_ = emailService.SendResetPasswordEmail(input.Body.Email, input.Body.Name, resetURL)
-				}
-			}()
+				}()
+			}
 		}
 
 		u := ManageUserDTO{
@@ -286,9 +295,16 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		}
 
 		resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
-		if err := emailService.SendResetPasswordEmail(userEmail, name, resetURL); err != nil {
-			log.Printf("Failed to send reset email to %s: %v", userEmail, err)
-			return nil, huma.Error500InternalServerError("ไม่สามารถส่งอีเมลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง")
+		if distributor != nil {
+			if err := distributor.DistributeTaskSendEmail(ctx, userEmail, name, resetURL); err != nil {
+				log.Printf("[Users] Failed to enqueue reset email via Asynq, fallback to sync: %v", err)
+				_ = emailService.SendResetPasswordEmail(userEmail, name, resetURL)
+			}
+		} else {
+			if err := emailService.SendResetPasswordEmail(userEmail, name, resetURL); err != nil {
+				log.Printf("Failed to send reset email to %s: %v", userEmail, err)
+				return nil, huma.Error500InternalServerError("ไม่สามารถส่งอีเมลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง")
+			}
 		}
 
 		out := &struct {
