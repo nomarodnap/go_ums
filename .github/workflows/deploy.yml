@@ -112,17 +112,29 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-      # ----------------------------------------------------
-      # 2.3 Trigger Coolify Deployment Webhook
-      # ----------------------------------------------------
-      - name: Trigger Coolify Webhook
-        if: env.COOLIFY_WEBHOOK_URL != ''
+  # ========================================================
+  # 3. Deploy to Server via Self-Hosted Runner
+  # ========================================================
+  deploy:
+    name: Deploy to Server via Coolify
+    needs: [build-and-push]
+    runs-on: self-hosted
+    steps:
+      - name: Trigger Coolify Deployment
         run: |
-          echo "Triggering Coolify deploy webhook..."
-          curl -f -s -S -X POST "$COOLIFY_WEBHOOK_URL" || curl -f -s -S -X GET "$COOLIFY_WEBHOOK_URL"
+          echo "Triggering Coolify deployment locally on server..."
+          docker exec coolify php artisan tinker --execute='
+          $app = App\Models\Application::where("uuid", "xg9mjo2uni7wny0q8ee0itki")->first();
+          if ($app) {
+              $result = queue_application_deployment(
+                  application: $app,
+                  deployment_uuid: new_public_id(),
+                  force_rebuild: false,
+              );
+              echo "Coolify deployment result: " . json_encode($result) . "\n";
+          } else {
+              echo "Error: Application not found in Coolify!\n";
+              exit(1);
+          }
+          '
           echo "Coolify deployment triggered successfully!"
-
-      - name: Notify if Coolify Webhook is missing
-        if: env.COOLIFY_WEBHOOK_URL == ''
-        run: |
-          echo "::warning ::COOLIFY_WEBHOOK_URL secret is not set. Docker images are pushed to GHCR, but Coolify was not triggered. Add COOLIFY_WEBHOOK_URL to GitHub Secrets to automate deployments."
