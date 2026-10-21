@@ -114,14 +114,14 @@ func (s *EmailService) SendMail(toEmail, subject, htmlBody string) error {
 		log.Printf("❌ Failed to connect to SMTP server %s: %v", addr, err)
 		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		log.Printf("❌ Failed to create SMTP client: %v", err)
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	tlsConfig := &tls.Config{
 		ServerName: host,
@@ -155,7 +155,7 @@ func (s *EmailService) SendMail(toEmail, subject, htmlBody string) error {
 		log.Printf("❌ Failed to open data writer: %v", err)
 		return fmt.Errorf("failed to open data writer: %w", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	_, err = w.Write([]byte(message.String()))
 	if err != nil {

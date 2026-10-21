@@ -282,7 +282,6 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		if input.PaymentStatus != "" {
 			query += fmt.Sprintf(" AND b.payment_status = $%d", argIdx)
 			args = append(args, input.PaymentStatus)
-			argIdx++
 		}
 
 		query += " ORDER BY b.created_at DESC LIMIT 500"

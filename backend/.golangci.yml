@@ -8,6 +8,14 @@ linters:
   enable:
     - bodyclose
     - misspell
+  settings:
+    errcheck:
+      check-blank: false
+      exclude-functions:
+        - (*io.Closer).Close
+        - (io.Closer).Close
+        - (*net.Conn).Close
+        - (*os.File).Close
   exclusions:
     paths:
       - internal/db/

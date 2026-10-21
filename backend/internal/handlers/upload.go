@@ -39,7 +39,7 @@ func RegisterUploadRoutes(router chi.Router, storage storage.StorageService) {
 			http.Error(w, "Field 'file' is required in form-data", http.StatusBadRequest)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		cleanBase := filepath.Base(header.Filename)
 		ext := filepath.Ext(cleanBase)

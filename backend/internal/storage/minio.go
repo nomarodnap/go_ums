@@ -102,7 +102,7 @@ func (s *MinIOStorage) Upload(ctx context.Context, filename string, reader io.Re
 	if err != nil {
 		return "", fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, reader); err != nil {
 		return "", fmt.Errorf("failed to write file content: %w", err)
@@ -123,7 +123,7 @@ func (s *MinIOStorage) ServeFile(w http.ResponseWriter, r *http.Request, filenam
 	if s.available && s.client != nil {
 		obj, err := s.client.GetObject(r.Context(), s.bucket, cleanName, minio.GetObjectOptions{})
 		if err == nil {
-			defer obj.Close()
+			defer func() { _ = obj.Close() }()
 			stat, err := obj.Stat()
 			if err == nil {
 				if stat.ContentType != "" {
@@ -141,7 +141,7 @@ func (s *MinIOStorage) ServeFile(w http.ResponseWriter, r *http.Request, filenam
 	if fileInfo, err := os.Stat(localPath); err == nil && !fileInfo.IsDir() {
 		f, err := os.Open(localPath)
 		if err == nil {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			w.Header().Set("Cache-Control", "public, max-age=2592000")
 			http.ServeContent(w, r, cleanName, fileInfo.ModTime(), f)
 			return

@@ -54,7 +54,7 @@ func main() {
 
 	// 2. Connect to Redis
 	redisService := cache.NewRedisService(cfg.RedisURL)
-	defer redisService.Close()
+	defer func() { _ = redisService.Close() }()
 
 	// 3. Setup Chi Router
 	router := chi.NewMux()
@@ -99,7 +99,7 @@ func main() {
 		if err != nil {
 			log.Printf("[Asynq] Warning: Failed to initialize task distributor: %v", err)
 		} else {
-			defer taskDistributor.Close()
+			defer func() { _ = taskDistributor.Close() }()
 		}
 
 		taskProcessor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
