@@ -8,11 +8,10 @@ linters:
   enable:
     - bodyclose
     - misspell
-
-issues:
-  exclude-dirs:
-    - internal/db
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
+  exclusions:
+    paths:
+      - internal/db/
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
