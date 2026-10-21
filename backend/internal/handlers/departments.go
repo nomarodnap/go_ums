@@ -145,7 +145,7 @@ func RegisterDepartmentRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 		defer rows.Close()
 
-		var results []DepartmentDTO
+		results := make([]DepartmentDTO, 0)
 		for rows.Next() {
 			var d DepartmentDTO
 			if err := rows.Scan(
@@ -191,7 +191,7 @@ func RegisterDepartmentRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 		defer rows.Close()
 
-		var results []DepartmentServiceDTO
+		results := make([]DepartmentServiceDTO, 0)
 		for rows.Next() {
 			var s DepartmentServiceDTO
 			if err := rows.Scan(

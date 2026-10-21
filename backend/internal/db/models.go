@@ -8,6 +8,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Account struct {
+	ID                    string             `json:"id"`
+	UserID                string             `json:"user_id"`
+	AccountID             string             `json:"account_id"`
+	ProviderID            string             `json:"provider_id"`
+	AccessToken           pgtype.Text        `json:"access_token"`
+	RefreshToken          pgtype.Text        `json:"refresh_token"`
+	IDToken               pgtype.Text        `json:"id_token"`
+	AccessTokenExpiresAt  pgtype.Timestamptz `json:"access_token_expires_at"`
+	RefreshTokenExpiresAt pgtype.Timestamptz `json:"refresh_token_expires_at"`
+	Scope                 pgtype.Text        `json:"scope"`
+	Password              pgtype.Text        `json:"password"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Audit struct {
 	ID                        string             `json:"id"`
 	UtilityBillID             string             `json:"utility_bill_id"`
@@ -111,11 +127,22 @@ type Notification struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Session struct {
+	ID             string             `json:"id"`
+	UserID         string             `json:"user_id"`
+	Token          string             `json:"token"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	IpAddress      pgtype.Text        `json:"ip_address"`
+	UserAgent      pgtype.Text        `json:"user_agent"`
+	ImpersonatedBy pgtype.Text        `json:"impersonated_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID            string             `json:"id"`
 	Name          string             `json:"name"`
 	Email         string             `json:"email"`
-	PasswordHash  string             `json:"password_hash"`
 	EmailVerified bool               `json:"email_verified"`
 	Image         pgtype.Text        `json:"image"`
 	Role          string             `json:"role"`
@@ -124,6 +151,7 @@ type User struct {
 	BanExpires    pgtype.Timestamptz `json:"ban_expires"`
 	DepartmentID  pgtype.Text        `json:"department_id"`
 	Phone         pgtype.Text        `json:"phone"`
+	ClerkID       pgtype.Text        `json:"clerk_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
@@ -172,4 +200,13 @@ type UtilityBill struct {
 	CreatedBy               string             `json:"created_by"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Verification struct {
+	ID         string             `json:"id"`
+	Identifier string             `json:"identifier"`
+	Value      string             `json:"value"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }

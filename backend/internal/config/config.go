@@ -21,6 +21,11 @@ type Config struct {
 	SMTPPass      string
 	SMTPFromName  string
 	SMTPFromEmail string
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioUseSSL    bool
+	MinioBucket    string
 }
 
 func LoadConfig() *Config {
@@ -87,6 +92,28 @@ func LoadConfig() *Config {
 		redisURL = "redis://localhost:6379"
 	}
 
+	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
+	if minioEndpoint == "" {
+		minioEndpoint = "localhost:9000"
+	}
+
+	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
+	if minioAccessKey == "" {
+		minioAccessKey = "minioadmin"
+	}
+
+	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
+	if minioSecretKey == "" {
+		minioSecretKey = "minioadmin123"
+	}
+
+	minioUseSSL := os.Getenv("MINIO_USE_SSL") == "true"
+
+	minioBucket := os.Getenv("MINIO_BUCKET")
+	if minioBucket == "" {
+		minioBucket = "ums-uploads"
+	}
+
 	return &Config{
 		Port:          port,
 		DatabaseURL:   dbURL,
@@ -101,5 +128,10 @@ func LoadConfig() *Config {
 		SMTPPass:      os.Getenv("SMTP_PASS"),
 		SMTPFromName:  os.Getenv("SMTP_FROM_NAME"),
 		SMTPFromEmail: os.Getenv("SMTP_FROM_EMAIL"),
+		MinioEndpoint:  minioEndpoint,
+		MinioAccessKey: minioAccessKey,
+		MinioSecretKey: minioSecretKey,
+		MinioUseSSL:    minioUseSSL,
+		MinioBucket:    minioBucket,
 	}
 }

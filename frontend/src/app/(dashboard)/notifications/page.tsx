@@ -2,10 +2,12 @@
 
 import { useListNotifications } from "@/lib/api/generated/notifications/notifications";
 import { NotificationList } from "@/components/notifications/notification-list";
-import { Loader2 } from "lucide-react";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 
 export default function NotificationsPage() {
-  const { data: notifRes, isLoading } = useListNotifications();
+  const { data: notifRes, isLoading } = useListNotifications({
+    scope: "my_dept",
+  });
   const notifications =
     notifRes?.status === 200 && Array.isArray(notifRes.data)
       ? notifRes.data
@@ -14,12 +16,7 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col gap-6">
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground text-sm">
-            กำลังโหลดรายการแจ้งเตือน...
-          </span>
-        </div>
+        <LoadingEffect message="กำลังโหลดรายการแจ้งเตือน..." />
       ) : (
         <NotificationList
           notifications={notifications}

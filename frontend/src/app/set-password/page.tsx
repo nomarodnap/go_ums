@@ -15,7 +15,6 @@ import { Loader2, Lock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
-import { motion } from "motion/react";
 
 function SetPasswordForm() {
   const router = useRouter();
@@ -159,12 +158,7 @@ export default function SetPasswordPage() {
       <div className="absolute -top-40 -left-40 size-96 rounded-full bg-blue-500/15 dark:bg-blue-600/20 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-teal-500/15 dark:bg-teal-600/20 blur-3xl pointer-events-none" />
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-[420px]"
-      >
+      <div className="relative w-full max-w-[420px]">
         <Card className="w-full rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-2xl shadow-2xl p-2 sm:p-4">
         <CardHeader className="space-y-3 text-center pb-2">
           <div className="mx-auto flex size-20 items-center justify-center rounded-2xl bg-white dark:bg-slate-900/90 p-2 shadow-sm border border-black/[0.06] dark:border-white/[0.1]">
@@ -173,6 +167,7 @@ export default function SetPasswordPage() {
               alt="ตราสัญลักษณ์กรมประมง"
               width={70}
               height={70}
+              style={{ width: "auto", height: "auto" }}
               className="size-full object-contain"
               priority
             />
@@ -206,7 +201,7 @@ export default function SetPasswordPage() {
           </div>
         </CardContent>
       </Card>
-      </motion.div>
+      </div>
     </div>
   );
 }

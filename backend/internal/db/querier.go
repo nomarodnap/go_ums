@@ -23,6 +23,7 @@ type Querier interface {
 	DeleteBudget(ctx context.Context, id string) error
 	DeleteDepartment(ctx context.Context, id string) error
 	DeleteDepartmentService(ctx context.Context, id string) error
+	DeleteSessionByToken(ctx context.Context, token string) error
 	DeleteUser(ctx context.Context, id string) error
 	FlagManualAnomaly(ctx context.Context, arg FlagManualAnomalyParams) (Audit, error)
 	GetAuditByBillID(ctx context.Context, utilityBillID string) (Audit, error)
@@ -31,6 +32,7 @@ type Querier interface {
 	GetBudgetByID(ctx context.Context, id string) (Budget, error)
 	GetDepartmentByID(ctx context.Context, id string) (Department, error)
 	GetLatestBillCodeForPrefix(ctx context.Context, billCode pgtype.Text) (pgtype.Text, error)
+	GetSessionAndUser(ctx context.Context, token string) (GetSessionAndUserRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	ListAllDepartmentServices(ctx context.Context) ([]DepartmentService, error)
@@ -52,7 +54,6 @@ type Querier interface {
 	UpdateBill(ctx context.Context, arg UpdateBillParams) (UtilityBill, error)
 	UpdateBudget(ctx context.Context, arg UpdateBudgetParams) (Budget, error)
 	UpdateDepartment(ctx context.Context, arg UpdateDepartmentParams) (Department, error)
-	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpsertAudit(ctx context.Context, arg UpsertAuditParams) (Audit, error)
 }

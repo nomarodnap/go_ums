@@ -62,17 +62,19 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 	}
 
 	// Ensure verification table exists
-	_, _ = pool.Exec(context.Background(), `
-		CREATE TABLE IF NOT EXISTS verification (
-			id text PRIMARY KEY,
-			identifier text NOT NULL,
-			value text NOT NULL,
-			expires_at timestamp NOT NULL,
-			created_at timestamp DEFAULT NOW(),
-			updated_at timestamp DEFAULT NOW()
-		);
-		CREATE INDEX IF NOT EXISTS idx_verification_value ON verification (value);
-	`)
+	if pool != nil {
+		_, _ = pool.Exec(context.Background(), `
+			CREATE TABLE IF NOT EXISTS verification (
+				id text PRIMARY KEY,
+				identifier text NOT NULL,
+				value text NOT NULL,
+				expires_at timestamp NOT NULL,
+				created_at timestamp DEFAULT NOW(),
+				updated_at timestamp DEFAULT NOW()
+			);
+			CREATE INDEX IF NOT EXISTS idx_verification_value ON verification (value);
+		`)
+	}
 
 	// Login
 	huma.Register(api, huma.Operation{

@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/dof/ums-backend/internal/auth"
+	"github.com/dof/ums-backend/internal/service"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -98,7 +100,7 @@ func RegisterAuditRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 		defer rows.Close()
 
-		var results []AuditDTO
+		results := make([]AuditDTO, 0)
 		for rows.Next() {
 			var a AuditDTO
 			if err := rows.Scan(
@@ -133,16 +135,42 @@ func RegisterAuditRoutes(api huma.API, pool *pgxpool.Pool) {
 			return nil, huma.Error403Forbidden(err.Error())
 		}
 
-		auditID := uuid.New().String()
-		_, err = pool.Exec(ctx, `
-			INSERT INTO audits (id, utility_bill_id, auditor_id, is_manual_anomaly, manual_anomaly_reason, status, created_at, updated_at)
-			VALUES ($1, $2, $3, true, $4, 'PENDING_CORRECTION', NOW(), NOW())
-			ON CONFLICT (id) DO UPDATE SET is_manual_anomaly = true, manual_anomaly_reason = EXCLUDED.manual_anomaly_reason, status = 'PENDING_CORRECTION', updated_at = NOW()
-		`, auditID, input.BillID, user.UserID, input.Body.Reason)
+		var existingAuditID string
+		_ = pool.QueryRow(ctx, "SELECT id FROM audits WHERE utility_bill_id = $1 LIMIT 1", input.BillID).Scan(&existingAuditID)
+
+		if existingAuditID != "" {
+			_, err = pool.Exec(ctx, `
+				UPDATE audits SET
+					is_manual_anomaly = true,
+					manual_anomaly_reason = $1,
+					status = 'PENDING_CORRECTION',
+					updated_at = NOW()
+				WHERE id = $2
+			`, input.Body.Reason, existingAuditID)
+		} else {
+			auditID := uuid.New().String()
+			_, err = pool.Exec(ctx, `
+				INSERT INTO audits (
+					id, utility_bill_id, auditor_id,
+					is_manual_anomaly, manual_anomaly_reason,
+					status, created_at, updated_at
+				) VALUES (
+					$1, $2, $3,
+					true, $4,
+					'PENDING_CORRECTION', NOW(), NOW()
+				)
+			`, auditID, input.BillID, user.UserID, input.Body.Reason)
+		}
 
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to flag anomaly")
 		}
+
+		logID := uuid.New().String()
+		_, _ = pool.Exec(ctx, `
+			INSERT INTO bill_activity_logs (id, bill_id, user_id, action, details, created_at)
+			VALUES ($1, $2, $3, 'AUDITED', $4, NOW())
+		`, logID, input.BillID, user.UserID, fmt.Sprintf("พบความผิดปกติ (บันทึกด้วยตนเอง): %s", input.Body.Reason))
 
 		return &struct{ Body bool `json:"body"` }{Body: true}, nil
 	})
@@ -160,19 +188,163 @@ func RegisterAuditRoutes(api huma.API, pool *pgxpool.Pool) {
 	}, func(ctx context.Context, input *struct {
 		BillID string `path:"billId"`
 	}) (*struct{ Body bool `json:"body"` }, error) {
-		if _, err := auth.RequireRoles(ctx, "admin", "auditor"); err != nil {
+		user, err := auth.RequireRoles(ctx, "admin", "auditor")
+		if err != nil {
 			return nil, huma.Error403Forbidden(err.Error())
 		}
 
-		_, err := pool.Exec(ctx, `
-			UPDATE audits SET is_manual_anomaly = false, manual_anomaly_reason = NULL, updated_at = NOW()
+		var existingAudit struct {
+			id                        string
+			isLateReceive             bool
+			isLatePayment             bool
+			isOverdueMoreThan2Months  bool
+			isDisbursementOver2Months bool
+			isWrongMonth              bool
+			isPhoneOverLimit          bool
+			isPhoneUsageOverLimit     bool
+			isWrongBudget             bool
+			isDuplicate               bool
+			isAnomalyExpense          bool
+		}
+		err = pool.QueryRow(ctx, `
+			SELECT id, is_late_receive, is_late_payment, is_overdue_more_than_2_months,
+			       is_disbursement_over_2_months, is_wrong_month, is_phone_over_limit,
+			       is_phone_usage_over_limit, is_wrong_budget, is_duplicate, is_anomaly_expense
+			FROM audits
 			WHERE utility_bill_id = $1
-		`, input.BillID)
+			LIMIT 1
+		`, input.BillID).Scan(
+			&existingAudit.id, &existingAudit.isLateReceive, &existingAudit.isLatePayment,
+			&existingAudit.isOverdueMoreThan2Months, &existingAudit.isDisbursementOver2Months,
+			&existingAudit.isWrongMonth, &existingAudit.isPhoneOverLimit,
+			&existingAudit.isPhoneUsageOverLimit, &existingAudit.isWrongBudget,
+			&existingAudit.isDuplicate, &existingAudit.isAnomalyExpense,
+		)
+		if err == nil && existingAudit.id != "" {
+			hasOtherIssues := existingAudit.isLateReceive || existingAudit.isLatePayment ||
+				existingAudit.isOverdueMoreThan2Months || existingAudit.isDisbursementOver2Months ||
+				existingAudit.isWrongMonth || existingAudit.isPhoneOverLimit ||
+				existingAudit.isPhoneUsageOverLimit || existingAudit.isWrongBudget ||
+				existingAudit.isDuplicate || existingAudit.isAnomalyExpense
 
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to unflag anomaly")
+			status := "CORRECTED"
+			if hasOtherIssues {
+				status = "PENDING_CORRECTION"
+			}
+
+			_, err = pool.Exec(ctx, `
+				UPDATE audits SET
+					is_manual_anomaly = false,
+					manual_anomaly_reason = NULL,
+					status = $1,
+					updated_at = NOW()
+				WHERE id = $2
+			`, status, existingAudit.id)
+			if err != nil {
+				return nil, huma.Error500InternalServerError("failed to unflag anomaly")
+			}
+
+			logID := uuid.New().String()
+			_, _ = pool.Exec(ctx, `
+				INSERT INTO bill_activity_logs (id, bill_id, user_id, action, details, created_at)
+				VALUES ($1, $2, $3, 'AUDITED', 'ยกเลิกการตั้งค่าความผิดปกติด้วยตนเอง', NOW())
+			`, logID, input.BillID, user.UserID)
 		}
 
 		return &struct{ Body bool `json:"body"` }{Body: true}, nil
 	})
+
+	// Resolve Audit
+	huma.Register(api, huma.Operation{
+		OperationID: "resolveAudit",
+		Method:      http.MethodPut,
+		Path:        "/api/audits/{auditId}/resolve",
+		Summary:     "Resolve internal audit findings and mark as corrected",
+		Tags:        []string{"Audits"},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}, func(ctx context.Context, input *ResolveAuditInput) (*struct{ Body bool `json:"body"` }, error) {
+		user, err := auth.RequireRoles(ctx, "admin", "auditor", "central_staff", "regional_staff")
+		if err != nil {
+			return nil, huma.Error403Forbidden(err.Error())
+		}
+
+		var billID string
+		err = pool.QueryRow(ctx, `
+			UPDATE audits
+			SET status = 'CORRECTED', remarks = $1, attachment_proof = $2, updated_at = NOW()
+			WHERE id = $3
+			RETURNING utility_bill_id
+		`, input.Body.Remarks, input.Body.AttachmentProof, input.AuditID).Scan(&billID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to resolve audit: " + err.Error())
+		}
+
+		logID := uuid.New().String()
+		remarksText := input.Body.Remarks
+		if remarksText == "" {
+			remarksText = "ไม่มีหมายเหตุ"
+		}
+		_, _ = pool.Exec(ctx, `
+			INSERT INTO bill_activity_logs (id, bill_id, user_id, action, details, created_at)
+			VALUES ($1, $2, $3, 'AUDITED', $4, NOW())
+		`, logID, billID, user.UserID, fmt.Sprintf("ตรวจสอบแก้ไขความผิดปกติ: %s", remarksText))
+
+		return &struct{ Body bool `json:"body"` }{Body: true}, nil
+	})
+
+	// Recheck All Audits
+	huma.Register(api, huma.Operation{
+		OperationID: "recheckAllAudits",
+		Method:      http.MethodPost,
+		Path:        "/api/audits/recheck-all",
+		Summary:     "Re-evaluate audit rules for all bills",
+		Tags:        []string{"Audits"},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}, func(ctx context.Context, input *struct{}) (*struct {
+		Body struct {
+			Success bool `json:"success"`
+			Count   int  `json:"count"`
+		} `json:"body"`
+	}, error) {
+		if _, err := auth.RequireRoles(ctx, "admin", "auditor"); err != nil {
+			return nil, huma.Error403Forbidden(err.Error())
+		}
+
+		rows, err := pool.Query(ctx, "SELECT id FROM utility_bills")
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to fetch bills for recheck")
+		}
+		defer rows.Close()
+
+		var billIDs []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err == nil {
+				billIDs = append(billIDs, id)
+			}
+		}
+		rows.Close()
+
+		count := 0
+		for _, id := range billIDs {
+			if err := service.RunAuditChecks(ctx, pool, id, "SYSTEM", false); err == nil {
+				count++
+			}
+		}
+
+		out := &struct {
+			Body struct {
+				Success bool `json:"success"`
+				Count   int  `json:"count"`
+			} `json:"body"`
+		}{}
+		out.Body.Success = true
+		out.Body.Count = count
+		return out, nil
+	})
+
 }

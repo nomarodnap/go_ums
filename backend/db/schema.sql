@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Department of Fisheries Utility Management System (UMS)
--- Compatible with sqlc (pgx/v5)
+-- Compatible with sqlc (pgx/v5) and Better Auth
 
 CREATE TABLE IF NOT EXISTS departments (
     id TEXT PRIMARY KEY,
@@ -20,22 +20,73 @@ CREATE TABLE IF NOT EXISTS departments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS users (
+-- Better Auth user table
+CREATE TABLE IF NOT EXISTS "user" (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     image TEXT,
     role TEXT NOT NULL DEFAULT 'user', -- 'admin', 'auditor', 'strategy_finance', 'central_staff', 'regional_staff', 'user'
     banned BOOLEAN DEFAULT FALSE,
     ban_reason TEXT,
     ban_expires TIMESTAMPTZ,
+    "banReason" TEXT,
+    "banExpires" TIMESTAMPTZ,
     department_id TEXT REFERENCES departments(id) ON DELETE SET NULL,
     phone TEXT,
+    clerk_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Better Auth session table
+CREATE TABLE IF NOT EXISTS "session" (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    "impersonatedBy" TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Better Auth account table (stores credentials and password hashes)
+CREATE TABLE IF NOT EXISTS "account" (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    id_token TEXT,
+    access_token_expires_at TIMESTAMPTZ,
+    refresh_token_expires_at TIMESTAMPTZ,
+    scope TEXT,
+    password TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Better Auth verification table
+CREATE TABLE IF NOT EXISTS "verification" (
+    id TEXT PRIMARY KEY,
+    identifier TEXT NOT NULL,
+    value TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS session_token_idx ON "session"(token);
+CREATE INDEX IF NOT EXISTS session_user_id_idx ON "session"(user_id);
+CREATE INDEX IF NOT EXISTS account_user_id_idx ON "account"(user_id);
+CREATE INDEX IF NOT EXISTS verification_identifier_idx ON "verification"(identifier);
+
+-- View to maintain compatibility with legacy queries
+CREATE OR REPLACE VIEW users AS SELECT * FROM "user";
 
 CREATE TABLE IF NOT EXISTS department_services (
     id TEXT PRIMARY KEY,
@@ -79,12 +130,12 @@ CREATE TABLE IF NOT EXISTS utility_bills (
     id TEXT PRIMARY KEY,
     bill_code TEXT UNIQUE,
     department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
-    utility_type TEXT NOT NULL, -- 'ค่าไฟฟ้า', 'ค่าประปา&น้ำบาดาล', 'ค่าโทรศัพท์', 'ค่าสื่อสาร&โทรคมนาคม', 'ค่าบริการไปรษณีย์'
+    utility_type TEXT NOT NULL,
     billing_month INTEGER NOT NULL,
     billing_year INTEGER NOT NULL,
     provider TEXT,
     service_number TEXT,
-    service_breakdown TEXT, -- JSON string
+    service_breakdown TEXT,
     invoice_number TEXT,
     invoice_date TIMESTAMPTZ,
     location_type TEXT,
@@ -101,8 +152,8 @@ CREATE TABLE IF NOT EXISTS utility_bills (
     budget_code TEXT,
     fund_source TEXT,
     paid_amount NUMERIC(15, 2),
-    payment_status TEXT NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'PAID'
-    invoice_status TEXT NOT NULL DEFAULT 'RECEIVED', -- 'RECEIVED', 'NOT_RECEIVED'
+    payment_status TEXT NOT NULL DEFAULT 'PENDING',
+    invoice_status TEXT NOT NULL DEFAULT 'RECEIVED',
     receipt_number TEXT,
     receipt_date TIMESTAMPTZ,
     receipt_payment_date TIMESTAMPTZ,
@@ -136,7 +187,7 @@ CREATE TABLE IF NOT EXISTS audits (
     is_duplicate BOOLEAN DEFAULT FALSE,
     is_anomaly_expense BOOLEAN DEFAULT FALSE,
     is_manual_anomaly BOOLEAN DEFAULT FALSE,
-    status TEXT NOT NULL DEFAULT 'PENDING_CORRECTION', -- 'PENDING_CORRECTION', 'CORRECTED'
+    status TEXT NOT NULL DEFAULT 'PENDING_CORRECTION',
     remarks TEXT,
     manual_anomaly_reason TEXT,
     attachment_proof TEXT,
@@ -150,8 +201,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     target_role TEXT,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
-    type TEXT NOT NULL, -- 'BUDGET_LIMIT', 'LATE_PAYMENT', 'PENDING_BILL', 'MISSING_DATA', 'ABNORMAL_EXPENSE'
-    severity TEXT NOT NULL DEFAULT 'NORMAL', -- 'NORMAL', 'WARNING', 'URGENT'
+    type TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'NORMAL',
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     link TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

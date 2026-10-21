@@ -147,10 +147,21 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 			}
 
 			if targetDeptID == "" {
-				// Fallback to first department in database
-				_ = pool.QueryRow(ctx, "SELECT id, full_name, COALESCE(short_name, '') FROM departments ORDER BY id ASC LIMIT 1").Scan(
-					&targetDeptID, &deptName, &deptShortName,
-				)
+				// Fallback to department with most bills, or first department
+				_ = pool.QueryRow(ctx, `
+					SELECT d.id, d.full_name, COALESCE(d.short_name, '') 
+					FROM departments d 
+					JOIN utility_bills b ON b.department_id = d.id 
+					GROUP BY d.id, d.full_name, d.short_name 
+					ORDER BY COUNT(b.id) DESC 
+					LIMIT 1
+				`).Scan(&targetDeptID, &deptName, &deptShortName)
+
+				if targetDeptID == "" {
+					_ = pool.QueryRow(ctx, "SELECT id, full_name, COALESCE(short_name, '') FROM departments ORDER BY id ASC LIMIT 1").Scan(
+						&targetDeptID, &deptName, &deptShortName,
+					)
+				}
 			} else {
 				_ = pool.QueryRow(ctx, "SELECT full_name, COALESCE(short_name, '') FROM departments WHERE id = $1", targetDeptID).Scan(
 					&deptName, &deptShortName,
@@ -168,23 +179,8 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 		if input.FiscalYear > 0 {
 			currentYear = input.FiscalYear
 		}
-
-		// Check if current year has bills, if not, find latest billing year
-		var maxYearInDB int
-		_ = pool.QueryRow(ctx, "SELECT COALESCE(MAX(billing_year), 0) FROM utility_bills").Scan(&maxYearInDB)
 		effectiveYear := currentYear
 		effectiveMonth := currentMonth
-		if maxYearInDB > 0 && maxYearInDB != currentYear {
-			// If no bills in currentYear, we can reference maxYearInDB for stats
-			var countInCurrentYear int
-			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE billing_year = $1", currentYear).Scan(&countInCurrentYear)
-			if countInCurrentYear == 0 {
-				effectiveYear = maxYearInDB
-				var maxMonthInDB int
-				_ = pool.QueryRow(ctx, "SELECT COALESCE(MAX(billing_month), 12) FROM utility_bills WHERE billing_year = $1", effectiveYear).Scan(&maxMonthInDB)
-				effectiveMonth = maxMonthInDB
-			}
-		}
 
 		// 1. KPI: บิลบันทึกเข้าระบบ (เดือนนี้)
 		if scope == "all" {
@@ -234,7 +230,7 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 				a.is_manual_anomaly = true OR a.is_late_receive = true OR a.is_late_payment = true OR
 				a.is_overdue_more_than_2_months = true OR a.is_disbursement_over_2_months = true OR
 				a.is_wrong_month = true OR a.is_phone_over_limit = true OR a.is_phone_usage_over_limit = true OR
-				a.is_wrong_budget = true OR a.is_duplicate = true
+				a.is_wrong_budget = true OR a.is_duplicate = true OR a.is_anomaly_expense = true
 			) AND (b.is_reviewed = false OR b.is_reviewed IS NULL)
 		`
 		if scope == "all" {
@@ -265,7 +261,7 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 				a.is_manual_anomaly = true OR a.is_late_receive = true OR a.is_late_payment = true OR
 				a.is_overdue_more_than_2_months = true OR a.is_disbursement_over_2_months = true OR
 				a.is_wrong_month = true OR a.is_phone_over_limit = true OR a.is_phone_usage_over_limit = true OR
-				a.is_wrong_budget = true OR a.is_duplicate = true
+				a.is_wrong_budget = true OR a.is_duplicate = true OR a.is_anomaly_expense = true
 			) AND (b.is_reviewed = false OR b.is_reviewed IS NULL)
 		`
 		var rRows pgx.Rows

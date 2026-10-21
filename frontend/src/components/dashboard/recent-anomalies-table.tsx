@@ -148,7 +148,7 @@ export function RecentAnomaliesTable({
                 </TableCell>
                 <TableCell>
                   <Link
-                    href="/bills"
+                    href="/all-bills"
                     className="flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-all"
                   >
                     <ArrowUpRight className="size-4" />

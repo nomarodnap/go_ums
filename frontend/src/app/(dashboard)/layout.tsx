@@ -8,11 +8,12 @@ import {
 import { AppSidebar } from "@/components/app-sidebar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommandMenu } from "@/components/layout/command-menu";
 import Image from "next/image";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
-import { useRouter, usePathname } from "next/navigation";
+import { useGetNotificationCounts } from "@/lib/api/generated/notifications/notifications";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { PageTransition } from "@/components/motion/page-transition";
 
 export default function DashboardLayout({
   children,
@@ -20,8 +21,9 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const { data: userData, isLoading, isError } = useGetCurrentUser();
+  const { data: countsRes } = useGetNotificationCounts();
+  const counts = countsRes?.status === 200 ? countsRes.data : undefined;
 
   useEffect(() => {
     if (!isLoading && (isError || (userData && userData.status !== 200))) {
@@ -40,13 +42,15 @@ export default function DashboardLayout({
         name: user.name,
         department: user.departmentName || "กรมประมง",
         role: user.role,
+        myDeptUnreadCount: counts?.myDeptCount,
+        allSystemUnreadCount: counts?.allSystemCount,
       }
     : undefined;
 
   return (
     <SidebarProvider>
       <AppSidebar user={userProp} />
-      <SidebarInset className="bg-background min-h-screen flex flex-col">
+      <SidebarInset className="bg-background">
         <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 dark:bg-background/70 backdrop-blur-2xl px-5 sm:px-8 sticky top-0 z-30 transition-all">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground size-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5" />
@@ -57,6 +61,7 @@ export default function DashboardLayout({
                   alt="ตราสัญลักษณ์กรมประมง"
                   width={28}
                   height={28}
+                  style={{ width: "auto", height: "auto" }}
                   className="size-7 object-contain"
                   priority
                 />
@@ -72,14 +77,13 @@ export default function DashboardLayout({
             </div>
           </div>
           <div className="flex items-center gap-2.5">
+            <CommandMenu />
             <ThemeToggle />
-            <NotificationBell />
+            <NotificationBell initialCount={counts?.myDeptCount} />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6 md:p-8 max-w-[1600px] w-full mx-auto">
-          <PageTransition key={pathname} className="flex flex-1 flex-col gap-6">
-            {children}
-          </PageTransition>
+          {children}
         </div>
       </SidebarInset>
     </SidebarProvider>

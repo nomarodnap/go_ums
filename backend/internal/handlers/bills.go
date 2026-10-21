@@ -293,7 +293,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 		defer rows.Close()
 
-		var results []BillDTO
+		results := make([]BillDTO, 0)
 		for rows.Next() {
 			var b BillDTO
 			if err := rows.Scan(
@@ -395,46 +395,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 
 		// 4. Run Audit Check
-		invAmount := 0.0
-		if input.Body.InvoiceAmount != nil {
-			invAmount = *input.Body.InvoiceAmount
-		}
-		auditFlags := service.EvaluateBillAudits(service.BillAuditInput{
-			UtilityType:          input.Body.UtilityType,
-			BillingMonth:         input.Body.BillingMonth,
-			BillingYear:          input.Body.BillingYear,
-			InvoiceAmount:        invAmount,
-			InvoiceDate:          input.Body.InvoiceDate,
-			ReceivedDate:         input.Body.ReceivedDate,
-			SentToDisbursingDate: input.Body.SentToDisbursingDate,
-			PaymentDate:          input.Body.PaymentDate,
-			PaymentStatus:        input.Body.PaymentStatus,
-		})
-
-		auditID := uuid.New().String()
-		auditStatus := "PENDING_CORRECTION"
-		hasIssues := auditFlags.IsLateReceive || auditFlags.IsLatePayment || auditFlags.IsOverdueMoreThan2Months ||
-			auditFlags.IsDisbursementOver2Months || auditFlags.IsWrongMonth || auditFlags.IsPhoneOverLimit ||
-			auditFlags.IsDuplicate || auditFlags.IsAnomalyExpense
-		if !hasIssues {
-			auditStatus = "CORRECTED"
-		}
-
-		_, _ = pool.Exec(ctx, `
-			INSERT INTO audits (
-				id, utility_bill_id, auditor_id, is_late_receive, is_late_payment,
-				is_overdue_more_than_2_months, is_disbursement_over_2_months, is_wrong_month,
-				is_phone_over_limit, is_phone_usage_over_limit, is_wrong_budget,
-				is_duplicate, is_anomaly_expense, is_manual_anomaly, status,
-				created_at, updated_at
-			) VALUES (
-				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, $14, NOW(), NOW()
-			)
-		`, auditID, billID, userID, auditFlags.IsLateReceive, auditFlags.IsLatePayment,
-			auditFlags.IsOverdueMoreThan2Months, auditFlags.IsDisbursementOver2Months, auditFlags.IsWrongMonth,
-			auditFlags.IsPhoneOverLimit, auditFlags.IsPhoneUsageOverLimit, auditFlags.IsWrongBudget,
-			auditFlags.IsDuplicate, auditFlags.IsAnomalyExpense, auditStatus,
-		)
+		_ = service.RunAuditChecks(ctx, pool, billID, userID, true)
 
 		// 5. Activity Log
 		logID := uuid.New().String()
@@ -598,41 +559,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		}
 
 		// Re-evaluate Audits
-		invAmount := 0.0
-		if input.Body.InvoiceAmount != nil {
-			invAmount = *input.Body.InvoiceAmount
-		}
-		auditFlags := service.EvaluateBillAudits(service.BillAuditInput{
-			UtilityType:          input.Body.UtilityType,
-			BillingMonth:         input.Body.BillingMonth,
-			BillingYear:          input.Body.BillingYear,
-			InvoiceAmount:        invAmount,
-			InvoiceDate:          input.Body.InvoiceDate,
-			ReceivedDate:         input.Body.ReceivedDate,
-			SentToDisbursingDate: input.Body.SentToDisbursingDate,
-			PaymentDate:          input.Body.PaymentDate,
-			PaymentStatus:        input.Body.PaymentStatus,
-		})
-
-		auditStatus := "PENDING_CORRECTION"
-		hasIssues := auditFlags.IsLateReceive || auditFlags.IsLatePayment || auditFlags.IsOverdueMoreThan2Months ||
-			auditFlags.IsDisbursementOver2Months || auditFlags.IsWrongMonth || auditFlags.IsPhoneOverLimit ||
-			auditFlags.IsDuplicate || auditFlags.IsAnomalyExpense
-		if !hasIssues {
-			auditStatus = "CORRECTED"
-		}
-
-		_, _ = pool.Exec(ctx, `
-			UPDATE audits SET
-				is_late_receive = $1, is_late_payment = $2, is_overdue_more_than_2_months = $3,
-				is_disbursement_over_2_months = $4, is_wrong_month = $5, is_phone_over_limit = $6,
-				is_phone_usage_over_limit = $7, is_wrong_budget = $8, is_duplicate = $9,
-				is_anomaly_expense = $10, status = $11, updated_at = NOW()
-			WHERE utility_bill_id = $12
-		`, auditFlags.IsLateReceive, auditFlags.IsLatePayment, auditFlags.IsOverdueMoreThan2Months,
-			auditFlags.IsDisbursementOver2Months, auditFlags.IsWrongMonth, auditFlags.IsPhoneOverLimit,
-			auditFlags.IsPhoneUsageOverLimit, auditFlags.IsWrongBudget, auditFlags.IsDuplicate,
-			auditFlags.IsAnomalyExpense, auditStatus, input.ID)
+		_ = service.RunAuditChecks(ctx, pool, input.ID, userID, true)
 
 		// Activity Log
 		logID := uuid.New().String()

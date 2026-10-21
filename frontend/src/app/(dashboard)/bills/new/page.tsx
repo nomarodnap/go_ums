@@ -10,6 +10,7 @@ import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { CreateBillForm } from "@/components/bills/create-bill-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 
 export default function NewBillPage() {
   const { data: deptRes, isLoading: loadingDept } = useListDepartments();
@@ -40,12 +41,7 @@ export default function NewBillPage() {
         <div className="flex items-center justify-between space-y-2">
           <h2 className="text-3xl font-bold tracking-tight">เพิ่มรายการใหม่</h2>
         </div>
-        <Card className="max-w-3xl mx-auto border-border/60">
-          <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm">กำลังโหลดข้อมูลฟอร์มบันทึกค่าใช้จ่าย...</p>
-          </CardContent>
-        </Card>
+        <LoadingEffect message="กำลังโหลดข้อมูลฟอร์มบันทึกค่าใช้จ่าย..." />
       </div>
     );
   }

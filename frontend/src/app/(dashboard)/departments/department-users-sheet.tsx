@@ -109,26 +109,26 @@ export function DepartmentUsersSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="overflow-y-auto sm:max-w-2xl" side="right">
-        <SheetHeader className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <SheetHeader className="mb-6 flex flex-row items-center justify-between">
           <div>
-            <SheetTitle className="text-foreground">จัดการบัญชีผู้ใช้งาน</SheetTitle>
-            <SheetDescription className="mt-1">
+            <SheetTitle>จัดการบัญชีผู้ใช้งาน</SheetTitle>
+            <SheetDescription>
               บัญชีผู้ใช้งานที่สังกัด {department.fullName}
             </SheetDescription>
           </div>
-          <Button onClick={() => setCreatingUser(true)} className="gap-2 shadow-xs shrink-0">
-            <Plus className="size-4" /> เพิ่มผู้ใช้งาน
+          <Button onClick={() => setCreatingUser(true)}>
+            <Plus className="mr-2 h-4 w-4" /> เพิ่มผู้ใช้งาน
           </Button>
         </SheetHeader>
 
-        <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs overflow-hidden">
+        <div className="rounded-md border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>ผู้ใช้งาน</TableHead>
                 <TableHead>สิทธิ์ (Role)</TableHead>
                 <TableHead>สถานะ</TableHead>
-                <TableHead className="w-[80px] text-right">จัดการ</TableHead>
+                <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

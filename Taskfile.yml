@@ -55,6 +55,18 @@ tasks:
     cmds:
       - npm run generate:api
 
+  auth:gen:
+    desc: ตรวจสอบและสร้าง Better Auth Schema DDL สำหรับอ้างอิง
+    dir: frontend
+    cmds:
+      - npx @better-auth/cli generate --output ../backend/db/better_auth_schema.sql -y
+
+  db:pipeline:
+    desc: รัน Migration และ Code Generation ครบวงจร (Goose Up + sqlc + Orval)
+    cmds:
+      - task: migrate:up
+      - task: gen
+
   # ==========================================
   # Database Migration Tasks (Goose)
   # ==========================================
@@ -63,21 +75,21 @@ tasks:
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL" status
+      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" status
 
   migrate:up:
     desc: รัน Migration ทั้งหมดเข้าสู่ฐานข้อมูล (Goose Up)
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL" up
+      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" up
 
   migrate:down:
     desc: Rollback Migration ย้อนกลับ 1 Step (Goose Down)
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL" down
+      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" down
 
   migrate:create:
     desc: สร้างไฟล์ Migration ใหม่ (เช่น task migrate:create -- add_new_column)
@@ -118,6 +130,26 @@ tasks:
   # ==========================================
   # Test & Quality
   # ==========================================
+  check:
+    desc: ตรวจสอบคุณภาพโค้ดทั้งระบบก่อน Commit/Push (Vet, Tests, Typecheck)
+    cmds:
+      - task: check:backend
+      - task: check:frontend
+
+  check:backend:
+    desc: ตรวจสอบโค้ด Go Backend (vet + tests)
+    dir: backend
+    cmds:
+      - go vet ./...
+      - go test -v ./...
+
+  check:frontend:
+    desc: ตรวจสอบโค้ด Next.js Frontend (typecheck + build)
+    dir: frontend
+    cmds:
+      - npm run typecheck
+      - npm run build
+
   test:
     desc: รัน Test ของ Go Backend ทั้งหมด
     dir: backend

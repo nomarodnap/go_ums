@@ -51,6 +51,8 @@ import type {
   BillTrackingItemDTO,
   BillTrackingSummaryDTO,
 } from "@/lib/api/generated/model";
+import NumberFlow from "@number-flow/react";
+import { motion } from "framer-motion";
 
 const THAI_MONTHS = [
   "มกราคม",
@@ -71,27 +73,27 @@ const STATUS_CONFIG = {
   UNRECORDED: {
     label: "ยังไม่ได้บันทึก",
     color: "#f43f5e",
-    className: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+    variant: "destructive" as const,
   },
   NOT_RECEIVED: {
     label: "ยังไม่ได้รับใบแจ้งหนี้",
     color: "#f97316",
-    className: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+    variant: "warning" as const,
   },
   PENDING_PAYMENT: {
     label: "ยังไม่ได้เบิกจ่าย",
-    color: "#3b82f6",
-    className: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+    color: "#eab308",
+    variant: "secondary" as const,
   },
   PAID: {
     label: "เบิกจ่ายแล้ว",
     color: "#10b981",
-    className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    variant: "success" as const,
   },
   UNKNOWN: {
     label: "ไม่ทราบสถานะ",
     color: "#6b7280",
-    className: "bg-muted text-muted-foreground",
+    variant: "outline" as const,
   },
 };
 
@@ -234,104 +236,143 @@ export function TrackingDashboard({
         </div>
       </div>
 
-      {/* KPI Metric Widget Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                ยังไม่ได้บันทึก
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400">
-                <AlertCircle className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-rose-600 dark:text-rose-400">
-                {stats.unrecorded}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+      {/* KPI Metric Widget Cards with NumberFlow & Motion */}
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: { staggerChildren: 0.08 },
+          },
+        }}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  ยังไม่ได้บันทึก
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400">
+                  <AlertCircle className="size-4.5" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                รายการที่คาดหวังแต่ไม่พบในระบบ
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-rose-600 dark:text-rose-400 flex items-baseline">
+                  <NumberFlow value={stats.unrecorded} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  รายการที่คาดหวังแต่ไม่พบในระบบ
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                ยังไม่ได้รับใบแจ้งหนี้
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-                <FileQuestion className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
-                {stats.notReceived}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  ยังไม่ได้รับใบแจ้งหนี้
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                  <FileQuestion className="size-4.5" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                บันทึกแล้วแต่รอใบเสร็จ/แจ้งหนี้
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400 flex items-baseline">
+                  <NumberFlow value={stats.notReceived} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  บันทึกแล้วแต่รอใบเสร็จ/แจ้งหนี้
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                ยังไม่ได้เบิกจ่าย
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
-                <Clock className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
-                {stats.pending}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  ยังไม่ได้เบิกจ่าย
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
+                  <Clock className="size-4.5" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                ได้รับใบแจ้งหนี้ รอทำเรื่องจ่าย
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-blue-600 dark:text-blue-400 flex items-baseline">
+                  <NumberFlow value={stats.pending} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  ได้รับใบแจ้งหนี้ รอทำเรื่องจ่าย
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                เบิกจ่ายแล้ว
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
-                <CheckCircle2 className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                {stats.paid}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  เบิกจ่ายแล้ว
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+                  <CheckCircle2 className="size-4.5" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                ชำระเงินเรียบร้อย
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 flex items-baseline">
+                  <NumberFlow value={stats.paid} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  ชำระเงินเรียบร้อย
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
 
       {/* Analytics Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -529,8 +570,8 @@ export function TrackingDashboard({
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge
-                            variant="outline"
-                            className={`text-[10px] h-5 font-normal ${statusConf.className}`}
+                            variant={statusConf.variant}
+                            className="text-[10px] h-5 font-normal"
                           >
                             {statusConf.label}
                           </Badge>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -33,8 +33,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useGetDashboardSummary } from "@/lib/api/generated/dashboard/dashboard";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
+import NumberFlow from "@number-flow/react";
+import { motion } from "framer-motion";
+import { LightweightTimeline } from "@/components/charts/lightweight-timeline";
 
 export default function OverviewPage() {
+  const [chartViewMode, setChartViewMode] = useState<"category" | "timeline">("category");
   const { data: userData, isLoading: isUserLoading } = useGetCurrentUser();
   const user = userData?.status === 200 ? userData.data.user : null;
 
@@ -84,6 +88,22 @@ export default function OverviewPage() {
       postal: 0,
     }));
   }, [stats?.trendData]);
+
+  const canvasTimelineData = useMemo(() => {
+    return trendData.map((d, idx) => {
+      const totalMonth =
+        (d.electricity || 0) +
+        (d.water || 0) +
+        (d.phone || 0) +
+        (d.telecom || 0) +
+        (d.postal || 0);
+      const m = String(idx + 1).padStart(2, "0");
+      return {
+        time: `2026-${m}-01`,
+        value: totalMonth,
+      };
+    });
+  }, [trendData]);
 
   const statusData: StatusDataPoint[] = useMemo(() => {
     if (stats?.statusData && stats.statusData.length > 0) {
@@ -172,145 +192,223 @@ export default function OverviewPage() {
         </Button>
       </div>
 
-      {/* KPI Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Metric Cards with NumberFlow & Motion */}
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: { staggerChildren: 0.08 },
+          },
+        }}
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
         {/* Metric 1 */}
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08]">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                บันทึกบิลทั้งกรม (เดือนนี้)
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
-                <FileText className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                {totalInvoicesCurrentMonth.toLocaleString()}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  บันทึกบิลทั้งกรม (เดือนนี้)
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
+                  <FileText className="size-4.5" />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                จากทุกหน่วยงานทั่วประเทศ
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-baseline">
+                  <NumberFlow value={totalInvoicesCurrentMonth} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  จากทุกหน่วยงานทั่วประเทศ
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Metric 2 */}
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08]">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                เบิกจ่ายแล้วทั้งกรม (เดือนนี้)
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
-                <CheckCircle2 className="size-4.5" />
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  เบิกจ่ายแล้วทั้งกรม (เดือนนี้)
+                </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
+                  <CheckCircle2 className="size-4.5" />
+                </div>
               </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                {formatCurrency(totalPaidCurrentMonth)}
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-baseline">
+                  <NumberFlow
+                    value={totalPaidCurrentMonth}
+                    format={{ style: "currency", currency: "THB", maximumFractionDigits: 0 }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground/80 mt-1">
+                  ยอดเบิกจ่ายสะสมเดือนปัจจุบัน
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground/80 mt-1">
-                ยอดเบิกจ่ายสะสมเดือนปัจจุบัน
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Metric 3 */}
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08]">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                ค้างชำระทั้งหมด (ทั้งกรม)
-              </span>
-              <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-                <AlertTriangle className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
-                {totalPendingBills.toLocaleString()}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  ค้างชำระทั้งหมด (ทั้งกรม)
                 </span>
+                <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                  <AlertTriangle className="size-4.5" />
+                </div>
               </div>
-              <Link
-                href="/all-bills"
-                className="text-xs text-amber-600/90 dark:text-amber-400/90 hover:underline inline-flex items-center font-medium mt-1 gap-1"
-              >
-                ดูรายการทั้งหมด <ArrowRight className="size-3" />
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-4">
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400 flex items-baseline">
+                  <NumberFlow value={totalPendingBills} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <Link
+                  href="/all-bills"
+                  className="text-xs text-amber-600/90 dark:text-amber-400/90 hover:underline inline-flex items-center font-medium mt-1 gap-1"
+                >
+                  ดูรายการทั้งหมด <ArrowRight className="size-3" />
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* Metric 4 */}
-        <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08]">
-          <CardContent className="p-5 flex flex-col justify-between h-full">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wide">
-                พบความผิดปกติทั้งกรม
-              </span>
-              <div
-                className={`flex size-9 items-center justify-center rounded-xl ${
-                  totalAnomalies > 0
-                    ? "bg-destructive/10 text-destructive dark:bg-destructive/20"
-                    : "bg-slate-500/10 text-slate-500 dark:bg-slate-500/20 dark:text-slate-400"
-                }`}
-              >
-                <Activity className="size-4.5" />
-              </div>
-            </div>
-            <div className="mt-4">
-              <div
-                className={`text-2xl sm:text-3xl font-bold tracking-tight ${
-                  totalAnomalies > 0
-                    ? "text-destructive"
-                    : "text-foreground"
-                }`}
-              >
-                {totalAnomalies.toLocaleString()}
-                <span className="text-sm font-normal text-muted-foreground ml-1.5">
-                  รายการ
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
+          <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                  พบความผิดปกติทั้งกรม
                 </span>
+                <div
+                  className={`flex size-9 items-center justify-center rounded-xl ${
+                    totalAnomalies > 0
+                      ? "bg-destructive/10 text-destructive dark:bg-destructive/20"
+                      : "bg-slate-500/10 text-slate-500 dark:bg-slate-500/20 dark:text-slate-400"
+                  }`}
+                >
+                  <Activity className="size-4.5" />
+                </div>
               </div>
-              <Link
-                href="/all-bills"
-                className={`text-xs hover:underline inline-flex items-center font-medium mt-1 gap-1 ${
-                  totalAnomalies > 0
-                    ? "text-destructive"
-                    : "text-muted-foreground"
-                }`}
-              >
-                ดูบิลที่พบความผิดปกติ <ArrowRight className="size-3" />
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              <div className="mt-4">
+                <div
+                  className={`text-2xl sm:text-3xl font-bold tracking-tight flex items-baseline ${
+                    totalAnomalies > 0
+                      ? "text-destructive"
+                      : "text-foreground"
+                  }`}
+                >
+                  <NumberFlow value={totalAnomalies} />
+                  <span className="text-sm font-normal text-muted-foreground ml-1.5">
+                    รายการ
+                  </span>
+                </div>
+                <Link
+                  href="/all-bills"
+                  className={`text-xs hover:underline inline-flex items-center font-medium mt-1 gap-1 ${
+                    totalAnomalies > 0
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  ดูบิลที่พบความผิดปกติ <ArrowRight className="size-3" />
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
 
       {/* Analytics Charts */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-1 md:col-span-2 lg:col-span-5 border-black/[0.06] dark:border-white/[0.08]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold tracking-tight">
-              แนวโน้มการเบิกจ่ายค่าสาธารณูปโภค (ทั้งกรม)
-            </CardTitle>
-            <CardDescription>
-              กราฟเปรียบเทียบค่าใช้จ่ายแต่ละประเภทสาธารณูปโภค 292 หน่วยงาน (12 เดือนย้อนหลัง)
-            </CardDescription>
+          <CardHeader className="pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base font-semibold tracking-tight">
+                แนวโน้มการเบิกจ่ายค่าสาธารณูปโภค (ทั้งกรม)
+              </CardTitle>
+              <CardDescription>
+                กราฟเปรียบเทียบค่าใช้จ่ายแต่ละประเภทสาธารณูปโภค 292 หน่วยงาน (12 เดือนย้อนหลัง)
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1 bg-black/[0.04] dark:bg-white/[0.06] p-1 rounded-xl shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setChartViewMode("category")}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+                  chartViewMode === "category"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                หมวดหมู่ (SVG)
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartViewMode("timeline")}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+                  chartViewMode === "timeline"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                ไทม์ไลน์ 120fps (Canvas)
+              </button>
+            </div>
           </CardHeader>
           <CardContent className="pt-2">
-            {trendData.length > 0 ? (
-              <TrendChart data={trendData} />
+            {chartViewMode === "category" ? (
+              trendData.length > 0 ? (
+                <TrendChart data={trendData} />
+              ) : (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
+                  ไม่มีข้อมูลเพียงพอสำหรับการแสดงกราฟ
+                </div>
+              )
             ) : (
-              <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
-                ไม่มีข้อมูลเพียงพอสำหรับการแสดงกราฟ
+              <div className="py-2">
+                <LightweightTimeline
+                  data={canvasTimelineData}
+                  height={280}
+                  title="ยอดการเบิกจ่ายรวมทั้งกรม (Canvas GPU)"
+                />
               </div>
             )}
           </CardContent>

@@ -8,12 +8,29 @@ const backendUrl =
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
-      },
-    ];
+    return {
+      beforeFiles: [
+        {
+          source: "/api/auth/forgot-password",
+          destination: `${backendUrl}/api/auth/forgot-password`,
+        },
+        {
+          source: "/api/auth/reset-password",
+          destination: `${backendUrl}/api/auth/reset-password`,
+        },
+      ],
+      afterFiles: [],
+      fallback: [
+        {
+          source: "/api/:path*",
+          destination: `${backendUrl}/api/:path*`,
+        },
+        {
+          source: "/uploads/:path*",
+          destination: `${backendUrl}/uploads/:path*`,
+        },
+      ],
+    };
   },
 };
 

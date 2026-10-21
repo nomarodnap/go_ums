@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -133,24 +134,6 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Lenis smooth scrolling integration */
-  html.lenis,
-  html.lenis body {
-    height: auto;
-  }
-
-  .lenis.lenis-smooth {
-    scroll-behavior: auto !important;
-  }
-
-  .lenis.lenis-smooth [data-lenis-prevent] {
-    overscroll-behavior: contain;
-  }
-
-  .lenis.lenis-stopped {
-    overflow: hidden;
-  }
-
   /* Apple-inspired smooth scrollbars */
   ::-webkit-scrollbar {
     width: 8px;
@@ -183,4 +166,27 @@
   .apple-active {
     @apply active:scale-[0.98] transition-transform duration-150 ease-out;
   }
+}
+
+/* Native View Transitions API */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: 180ms cubic-bezier(0.16, 1, 0.3, 1) both fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 240ms cubic-bezier(0.16, 1, 0.3, 1) both fade-in;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
 }

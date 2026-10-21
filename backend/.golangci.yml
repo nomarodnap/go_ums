@@ -1,0 +1,28 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - unconvert
+    - misspell
+    - nakedret
+
+issues:
+  exclude-dirs:
+    - internal/db
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+
+output:
+  formats:
+    - format: colored-line-number

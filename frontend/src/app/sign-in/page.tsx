@@ -12,20 +12,19 @@ import {
 } from "@/components/ui/card";
 import { Loader2, Lock, Mail, ShieldCheck, Info } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useLogin, getGetCurrentUserQueryKey } from "@/lib/api/generated/auth/auth";
+import { authClient } from "@/lib/auth-client";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "motion/react";
+import { getGetCurrentUserQueryKey } from "@/lib/api/generated/auth/auth";
+import { DofGoldLogo3D } from "@/components/three/dof-gold-logo-3d";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
   const queryClient = useQueryClient();
-
-  const loginMutation = useLogin();
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,81 +39,72 @@ export default function SignInPage() {
       return;
     }
 
+    setLoading(true);
     try {
-      const res = await loginMutation.mutateAsync({
-        data: {
-          email: email.trim(),
-          password,
-        },
+      const { data, error: signInError } = await authClient.signIn.email({
+        email: email.trim(),
+        password,
       });
 
-      if (res.status === 200 && res.data.token) {
-        localStorage.setItem("auth_token", res.data.token);
-        if (res.data.user) {
-          localStorage.setItem("user", JSON.stringify(res.data.user));
+      if (signInError) {
+        if (signInError.message?.toLowerCase().includes("banned")) {
+          setError("บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน");
+        } else {
+          setError(signInError.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง");
         }
-        document.cookie = `auth_token=${res.data.token}; path=/; max-age=86400; SameSite=Lax`;
+        setLoading(false);
+        return;
+      }
 
-        await queryClient.invalidateQueries({ queryKey: getGetCurrentUserQueryKey() });
-        router.push("/");
-        router.refresh();
-      } else {
-        setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+      if (data) {
+        const sessionToken = (data as any)?.session?.token || (data as any)?.token;
+        if (sessionToken) {
+          localStorage.setItem("auth_token", sessionToken);
+          document.cookie = `auth_token=${sessionToken}; path=/; max-age=86400; SameSite=Lax`;
+        }
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+        }
+
+        await queryClient.resetQueries();
+        window.location.href = "/";
       }
     } catch (err: unknown) {
-      let message = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
-      if (typeof err === "object" && err !== null) {
-        const errorObj = err as { detail?: string; title?: string; message?: string };
-        if (errorObj.detail === "account is suspended") {
-          message = "บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน";
-        } else if (errorObj.detail === "invalid email or password") {
-          message = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
-        } else if (errorObj.detail) {
-          message = errorObj.detail;
-        } else if (errorObj.message) {
-          message = errorObj.message;
-        } else if (errorObj.title) {
-          message = errorObj.title;
-        }
-      }
-      setError(message);
+      setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loading = loginMutation.isPending;
-
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4 overflow-hidden bg-[#f5f5f7] dark:bg-[#000000]">
-      {/* Apple ambient background blur glows */}
-      <div className="absolute -top-40 -left-40 size-96 rounded-full bg-blue-500/15 dark:bg-blue-600/20 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-teal-500/15 dark:bg-teal-600/20 blur-3xl pointer-events-none" />
+    <div
+      className="relative flex min-h-screen items-center justify-center p-4 overflow-hidden !bg-[#FDFDFD]"
+      style={{ backgroundColor: "#FDFDFD" }}
+    >
+      {/* Soft ambient background blur glows */}
+      <div className="absolute -top-40 -left-40 size-96 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-        className="relative w-full max-w-[420px]"
+      <Card
+        className="relative w-full max-w-[440px] rounded-3xl border border-slate-200/80 !bg-[#FDFDFD] shadow-[0_20px_60px_rgba(0,0,0,0.06)] p-2 sm:p-5 !text-slate-800"
+        style={{ backgroundColor: "#FDFDFD", color: "#1e293b" }}
       >
-        <Card className="w-full rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-2xl shadow-2xl p-2 sm:p-4">
-        <CardHeader className="space-y-3 text-center pb-4">
-          <div className="mx-auto flex size-20 items-center justify-center rounded-2xl bg-white dark:bg-slate-900/90 p-2 shadow-sm border border-black/[0.06] dark:border-white/[0.1]">
-            <Image
-              src="/logo.png"
-              alt="ตราสัญลักษณ์กรมประมง"
-              width={70}
-              height={70}
-              className="size-full object-contain"
-              priority
-            />
+        <CardHeader className="space-y-3 text-center pb-2">
+          {/* 3D Metallic Gold Emblem with Orbiting Lights */}
+          <div
+            className="mx-auto flex size-52 items-center justify-center rounded-3xl relative group"
+            style={{ backgroundColor: "#FDFDFD" }}
+          >
+            <DofGoldLogo3D size={200} className="drop-shadow-[0_14px_32px_rgba(180,120,20,0.22)]" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+            <CardTitle className="text-2xl font-bold tracking-tight !text-slate-800">
               เข้าสู่ระบบ
             </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+            <CardDescription className="text-xs !text-slate-500 mt-1.5 leading-relaxed">
               ระบบจัดการและรายงานค่าใช้จ่ายสาธารณูปโภค
               <br />
-              <span className="font-semibold text-foreground/80">กรมประมง (Department of Fisheries)</span>
+              <span className="font-semibold !text-slate-700">กรมประมง (Department of Fisheries)</span>
             </CardDescription>
           </div>
         </CardHeader>
@@ -122,11 +112,11 @@ export default function SignInPage() {
         <CardContent>
           <form noValidate onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold text-foreground tracking-wide">
+              <label htmlFor="email" className="text-xs font-semibold !text-slate-700 tracking-wide">
                 อีเมลเจ้าหน้าที่
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
                   id="email"
                   type="email"
@@ -134,26 +124,27 @@ export default function SignInPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="admin@fisheries.go.th"
-                  className="pl-9.5 h-10 rounded-xl bg-background/50"
+                  className="pl-9.5 h-10 rounded-xl bg-white border border-slate-200 !text-slate-800 placeholder:text-slate-400 shadow-xs focus-visible:ring-amber-500/30"
+                  style={{ backgroundColor: "#ffffff", borderColor: "#cbd5e1", color: "#1e293b" }}
                   disabled={loading}
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-1.5">
-                <label htmlFor="password" className="text-xs font-semibold text-foreground tracking-wide shrink-0">
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-xs font-semibold !text-slate-700 tracking-wide">
                   รหัสผ่าน
                 </label>
                 <Link
                   href="/forgot-password"
-                  className="text-[11px] sm:text-xs text-primary hover:underline font-medium text-right transition-colors"
+                  className="text-xs text-blue-600 hover:underline font-medium"
                 >
-                  ลืมรหัสผ่าน / ตั้งรหัสผ่าน
+                  ลืมรหัสผ่าน?
                 </Link>
               </div>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
                   id="password"
                   type="password"
@@ -161,7 +152,8 @@ export default function SignInPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="pl-9.5 h-10 rounded-xl bg-background/50"
+                  className="pl-9.5 h-10 rounded-xl bg-white border border-slate-200 !text-slate-800 placeholder:text-slate-400 shadow-xs focus-visible:ring-amber-500/30"
+                  style={{ backgroundColor: "#ffffff", borderColor: "#cbd5e1", color: "#1e293b" }}
                   disabled={loading}
                 />
               </div>
@@ -175,7 +167,7 @@ export default function SignInPage() {
 
             <Button
               type="submit"
-              className="w-full h-10 rounded-xl text-sm font-semibold shadow-xs"
+              className="w-full h-10 rounded-xl text-sm font-semibold shadow-xs bg-blue-600 hover:bg-blue-700 text-white"
               disabled={loading}
             >
               {loading ? (
@@ -189,33 +181,32 @@ export default function SignInPage() {
             </Button>
 
             {/* First-time login guidance note */}
-            <div className="p-3.5 rounded-2xl bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 text-left space-y-1 mt-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
-                <Info className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200/70 text-left space-y-1 mt-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-800">
+                <Info className="size-4 shrink-0 text-blue-600" />
                 <span>คำแนะนำสำหรับการเข้าใช้งานครั้งแรก</span>
               </div>
-              <p className="text-[11.5px] leading-relaxed text-blue-900/80 dark:text-blue-200/80 pl-5.5">
+              <p className="text-[11.5px] leading-relaxed text-blue-900/80 pl-5.5">
                 ในกรณีเข้าใช้งานระบบเป็นครั้งแรก ให้ท่านกดที่{" "}
                 <Link
                   href="/forgot-password"
-                  className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80"
+                  className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-800"
                 >
-                  "ลืมรหัสผ่าน / ตั้งรหัสผ่าน"
+                  "ลืมรหัสผ่าน?"
                 </Link>{" "}
                 และกรอกอีเมลที่หน่วยงานของท่านได้ส่งให้ทางกลุ่มตรวจสอบภายใน (กตน.) เพื่อตั้งรหัสผ่านใหม่สำหรับการเข้าใช้งาน
               </p>
             </div>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-black/[0.06] dark:border-white/[0.08] text-center">
-            <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <ShieldCheck className="size-3.5 text-emerald-500" />
+          <div className="mt-6 pt-4 border-t border-slate-200/80 text-center">
+            <div className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+              <ShieldCheck className="size-3.5 text-emerald-600" />
               <span>ระบบรักษาความปลอดภัยสำหรับข้าราชการและเจ้าหน้าที่</span>
             </div>
           </div>
         </CardContent>
       </Card>
-      </motion.div>
     </div>
   );
 }

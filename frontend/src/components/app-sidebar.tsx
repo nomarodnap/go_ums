@@ -194,10 +194,11 @@ export function AppSidebar({ user: initialUser, ...props }: AppSidebarProps) {
             >
               <div className="flex aspect-square size-10 items-center justify-center rounded-xl bg-white p-1.5 shadow-xs dark:bg-slate-900 border border-black/[0.06] dark:border-white/[0.08] shrink-0">
                 <Image
-                  src="/logo.png"
+                  src="/dof-logo.png"
                   alt="ตราสัญลักษณ์กรมประมง"
                   width={32}
                   height={32}
+                  style={{ width: "auto", height: "auto" }}
                   className="size-7 object-contain"
                   priority
                 />

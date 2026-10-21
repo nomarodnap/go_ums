@@ -147,6 +147,6 @@ RETURNING *;
 -- name: GetBillActivityLogs :many
 SELECT l.*, u.name AS user_name, u.email AS user_email
 FROM bill_activity_logs l
-LEFT JOIN users u ON l.user_id = u.id
+LEFT JOIN "user" u ON l.user_id = u.id
 WHERE l.bill_id = $1
 ORDER BY l.created_at DESC;

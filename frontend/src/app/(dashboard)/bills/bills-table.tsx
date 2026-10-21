@@ -87,6 +87,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import { BillQuickViewDrawer } from "@/components/bills/bill-quick-view-drawer";
 type Bill = {
   id: string;
   billCode: string | null;
@@ -172,6 +173,13 @@ export function BillsTable({
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [billToFlag, setBillToFlag] = useState<Bill | null>(null);
   const [flagReason, setFlagReason] = useState("");
+  const [billForDrawer, setBillForDrawer] = useState<Bill | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleRowClick = (bill: Bill) => {
+    setBillForDrawer(bill);
+    setIsDrawerOpen(true);
+  };
 
   const getAuditIssueTexts = (bill: Bill) => {
     const issues = [];
@@ -540,7 +548,8 @@ export function BillsTable({
             {filteredData.map((bill) => (
               <TableRow
                 key={bill.id}
-                className="group transition-colors"
+                className="group transition-colors hover:bg-muted/40 cursor-pointer"
+                onClick={() => handleRowClick(bill)}
               >
                 <TableCell>
                   <div className="flex flex-col">
@@ -702,7 +711,7 @@ export function BillsTable({
                     </div>
                   </TableCell>
                 )}
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -1674,6 +1683,33 @@ export function BillsTable({
           </div>
         </DialogContent>
       </Dialog>
+
+      <BillQuickViewDrawer
+        bill={billForDrawer}
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+        userRole={userRole}
+        onReview={() => {
+          if (!billForDrawer) return;
+          startTransition(async () => {
+            const nextState = !billForDrawer.isReviewed;
+            const res = await markBillAsReviewed(billForDrawer.id, nextState);
+            if (res.success) {
+              toast.success(nextState ? "บันทึกการตรวจสอบเรียบร้อยแล้ว" : "ยกเลิกการตรวจรับรองเรียบร้อยแล้ว");
+              setIsDrawerOpen(false);
+              router.refresh();
+            } else {
+              toast.error(res.error || "ไม่สามารถทำรายการได้");
+            }
+          });
+        }}
+        onFlag={() => {
+          if (!billForDrawer) return;
+          setBillToFlag(billForDrawer);
+          setIsDrawerOpen(false);
+        }}
+        isPending={isPending}
+      />
     </div>
   );
 }

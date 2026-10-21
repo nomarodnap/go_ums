@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Trash2, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { ErrorSpeechBubble } from "@/components/ui/error-speech-bubble";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCreateDepartmentService,
@@ -225,7 +226,7 @@ export function DepartmentServicesSheet({
               <Plus className="size-4 text-primary" /> เพิ่มหมายเลขผู้ใช้ใหม่
             </h4>
             <form onSubmit={handleAddService} noValidate className="space-y-4">
-              <div className="grid gap-2">
+              <div className="grid gap-2 relative">
                 <Label>
                   ประเภทสาธารณูปโภค <span className="text-destructive">*</span>
                 </Label>
@@ -243,15 +244,17 @@ export function DepartmentServicesSheet({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ค่าไฟฟ้า">ค่าไฟฟ้า</SelectItem>
-                    <SelectItem value="ค่าน้ำประปา">ค่าน้ำประปา</SelectItem>
+                    <SelectItem value="ค่าประปา&น้ำบาดาล">
+                      ค่าประปา&น้ำบาดาล
+                    </SelectItem>
                     <SelectItem value="ค่าโทรศัพท์">ค่าโทรศัพท์</SelectItem>
-                    <SelectItem value="ค่าอินเทอร์เน็ต">ค่าอินเทอร์เน็ต</SelectItem>
-                    <SelectItem value="ค่าไปรษณีย์">ค่าไปรษณีย์</SelectItem>
+                    <SelectItem value="ค่าสื่อสาร&โทรคมนาคม">
+                      ค่าสื่อสาร&โทรคมนาคม
+                    </SelectItem>
+                    <SelectItem value="ค่าบริการไปรษณีย์">ค่าบริการไปรษณีย์</SelectItem>
                   </SelectContent>
                 </Select>
-                {errors.utilityType && (
-                  <span className="text-xs text-destructive">{errors.utilityType}</span>
-                )}
+                <ErrorSpeechBubble message={errors.utilityType} />
               </div>
 
               {utilityType === "ค่าโทรศัพท์" && (
@@ -274,7 +277,7 @@ export function DepartmentServicesSheet({
                 </div>
               )}
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 relative">
                 <Label>
                   ผู้ให้บริการ <span className="text-destructive">*</span>
                 </Label>
@@ -284,15 +287,13 @@ export function DepartmentServicesSheet({
                     setProvider(e.target.value);
                     if (e.target.value.trim()) setErrors((prev) => ({ ...prev, provider: undefined }));
                   }}
-                  placeholder="เช่น กฟภ., กปภ., TOT, AIS"
+                  placeholder="เช่น กฟภ., TOT"
                   className={errors.provider ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                 />
-                {errors.provider && (
-                  <span className="text-xs text-destructive">{errors.provider}</span>
-                )}
+                <ErrorSpeechBubble message={errors.provider} />
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-2 relative">
                 <Label>
                   หมายเลขผู้ใช้ / รหัสเครื่องวัด <span className="text-destructive">*</span>
                 </Label>
@@ -302,12 +303,10 @@ export function DepartmentServicesSheet({
                     setServiceNumber(e.target.value);
                     if (e.target.value.trim()) setErrors((prev) => ({ ...prev, serviceNumber: undefined }));
                   }}
-                  placeholder="ระบุหมายเลข"
+                  placeholder="หมายเลขเครื่องวัด"
                   className={errors.serviceNumber ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                 />
-                {errors.serviceNumber && (
-                  <span className="text-xs text-destructive">{errors.serviceNumber}</span>
-                )}
+                <ErrorSpeechBubble message={errors.serviceNumber} />
               </div>
 
               {!["ค่าไปรษณีย์", "ค่าบริการไปรษณีย์"].includes(utilityType) &&
@@ -330,7 +329,7 @@ export function DepartmentServicesSheet({
 
               {utilityType === "ค่าโทรศัพท์" && phoneType === "mobile" && (
                 <>
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 relative">
                     <Label>
                       ชื่อ-สกุลเจ้าของเบอร์ <span className="text-destructive">*</span>
                     </Label>
@@ -343,11 +342,9 @@ export function DepartmentServicesSheet({
                       placeholder="ระบุชื่อ-สกุล"
                       className={errors.phoneOwnerName ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                     />
-                    {errors.phoneOwnerName && (
-                      <span className="text-xs text-destructive">{errors.phoneOwnerName}</span>
-                    )}
+                    <ErrorSpeechBubble message={errors.phoneOwnerName} />
                   </div>
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 relative">
                     <Label>
                       ตำแหน่งเจ้าของเบอร์ <span className="text-destructive">*</span>
                     </Label>
@@ -360,9 +357,7 @@ export function DepartmentServicesSheet({
                       placeholder="ระบุตำแหน่ง"
                       className={errors.phoneOwnerPosition ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                     />
-                    {errors.phoneOwnerPosition && (
-                      <span className="text-xs text-destructive">{errors.phoneOwnerPosition}</span>
-                    )}
+                    <ErrorSpeechBubble message={errors.phoneOwnerPosition} />
                   </div>
                 </>
               )}

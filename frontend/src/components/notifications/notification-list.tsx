@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useMarkNotificationRead,
+  useMarkAllNotificationsRead,
   getListNotificationsQueryKey,
 } from "@/lib/api/generated/notifications/notifications";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,8 +66,26 @@ export function NotificationList({
     },
   });
 
+  const markAllMutation = useMarkAllNotificationsRead({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getListNotificationsQueryKey(),
+        });
+        toast.success("ทำเครื่องหมายว่าอ่านทั้งหมดแล้ว");
+      },
+      onError: () => {
+        toast.error("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
+      },
+    },
+  });
+
   const handleMarkAsRead = (id: string) => {
     markReadMutation.mutate({ id });
+  };
+
+  const handleMarkAllAsRead = () => {
+    markAllMutation.mutate({ params: { scope } });
   };
 
   const getSeverityIcon = (severity?: string) => {
@@ -145,6 +164,19 @@ export function NotificationList({
             <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
           </div>
         </div>
+
+        {showAcknowledgeButton && unreadCount > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMarkAllAsRead}
+            disabled={markAllMutation.isPending}
+            className="rounded-xl border-black/[0.08] dark:border-white/[0.12] hover:bg-black/5 dark:hover:bg-white/5 font-medium text-xs h-9"
+          >
+            <CheckCheck className="mr-1.5 size-4 text-emerald-600 dark:text-emerald-400" />
+            อ่านทั้งหมด ({unreadCount})
+          </Button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -287,14 +319,15 @@ export function NotificationList({
                   </div>
                   <div className="flex-shrink-0 flex flex-col gap-1.5 items-end pl-2">
                     {notif.link && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        render={<Link href={notif.link} />}
-                        className="text-xs h-7.5 rounded-lg px-2.5 font-medium"
-                      >
-                        ดูรายละเอียด
-                      </Button>
+                      <Link href={notif.link}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7.5 rounded-lg px-2.5 font-medium"
+                        >
+                          ดูรายละเอียด
+                        </Button>
+                      </Link>
                     )}
                     {showAcknowledgeButton && !notif.isRead && (
                       <Button

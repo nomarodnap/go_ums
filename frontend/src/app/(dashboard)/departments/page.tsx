@@ -8,7 +8,8 @@ import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { DepartmentsTable } from "./departments-table";
 import { DepartmentFormSheet } from "./department-form-sheet";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle } from "lucide-react";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 
 export default function DepartmentsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -57,12 +58,7 @@ export default function DepartmentsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground text-sm">
-            กำลังโหลดข้อมูลหน่วยงาน...
-          </span>
-        </div>
+        <LoadingEffect message="กำลังโหลดข้อมูลหน่วยงาน..." />
       ) : (
         <DepartmentsTable
           initialData={departments}

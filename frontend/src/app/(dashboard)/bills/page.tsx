@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
-import { PlusCircle, Loader2 } from "lucide-react";
+import { PlusCircle } from "lucide-react";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 import { useListBills } from "@/lib/api/generated/bills/bills";
 import { useListDepartmentServices } from "@/lib/api/generated/departments/departments";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
@@ -15,16 +16,11 @@ export default function BillsPage() {
   const userRole = me?.role;
   const userDepartmentId = me?.departmentId;
 
-  // If user is regional_staff, central_staff, or user, filter by their department
-  const isSpecificDeptUser =
-    userRole === "user" ||
-    userRole === "regional_staff" ||
-    userRole === "central_staff";
-
+  // In next_ums, /bills is strictly scoped to the user's assigned department
   const { data: billsRes, isLoading: loadingBills } = useListBills(
-    isSpecificDeptUser && userDepartmentId
+    userDepartmentId
       ? { departmentId: userDepartmentId }
-      : undefined,
+      : { departmentId: "NONE" },
   );
   const { data: servicesRes, isLoading: loadingServices } =
     useListDepartmentServices();
@@ -44,10 +40,8 @@ export default function BillsPage() {
     <div className="flex-1 space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            รายการค่าใช้จ่าย
-          </h2>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h2 className="text-3xl font-bold tracking-tight">รายการค่าใช้จ่าย</h2>
+          <p className="text-muted-foreground mt-1">
             จัดการและติดตามสถานะใบแจ้งหนี้ค่าสาธารณูปโภคของหน่วยงาน
           </p>
         </div>
@@ -63,12 +57,7 @@ export default function BillsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground text-sm">
-            กำลังโหลดรายการบิล...
-          </span>
-        </div>
+        <LoadingEffect message="กำลังโหลดรายการบิล..." />
       ) : (
         <BillsTable
           initialData={bills as any}

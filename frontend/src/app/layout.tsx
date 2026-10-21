@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { Inter, Prompt } from "next/font/google";
-import "lenis/dist/lenis.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/lib/providers/query-provider";
-import { SmoothScrollProvider } from "@/lib/providers/smooth-scroll-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import NextTopLoader from "nextjs-toploader";
+import { GlobalRouteLoader } from "@/components/layout/global-route-loader";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,8 +24,11 @@ export const metadata: Metadata = {
   description:
     "ระบบจัดการและรายงานค่าใช้จ่ายสาธารณูปโภค กรมประมง (Department of Fisheries)",
   icons: {
-    icon: [{ url: "/logo.png", type: "image/png" }],
-    shortcut: ["/logo.png"],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/logo.png", type: "image/png" },
+    ],
+    shortcut: ["/favicon.ico"],
     apple: [{ url: "/logo.png", type: "image/png" }],
   },
 };
@@ -43,10 +45,11 @@ export default function RootLayout({
       className={`${inter.variable} ${prompt.variable} h-full antialiased`}
     >
       <body
-        className="min-h-full flex flex-col font-prompt bg-background text-foreground"
+        className="min-h-full flex flex-col font-prompt"
         suppressHydrationWarning
       >
-        <NextTopLoader color="#0071e3" showSpinner={false} />
+        <NextTopLoader color="#0071e3" height={3} showSpinner={false} />
+        <GlobalRouteLoader />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -54,10 +57,8 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <SmoothScrollProvider>
-              <TooltipProvider>{children}</TooltipProvider>
-              <Toaster position="top-right" richColors />
-            </SmoothScrollProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster />
           </QueryProvider>
         </ThemeProvider>
       </body>

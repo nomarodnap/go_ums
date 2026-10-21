@@ -29,6 +29,8 @@ func NewRedisService(redisURL string) *RedisService {
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Printf("[Redis] Warning: Unable to connect to Redis at %s (%v). Running without cache/queue.", opt.Addr, err)
+		_ = client.Close()
+		return &RedisService{Client: nil}
 	} else {
 		log.Printf("[Redis] Connected to Redis successfully at %s.", opt.Addr)
 	}

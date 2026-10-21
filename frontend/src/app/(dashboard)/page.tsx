@@ -35,7 +35,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useGetDashboardSummary } from "@/lib/api/generated/dashboard/dashboard";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
-import { MotionContainer, MotionItem, MotionCard } from "@/components/motion/motion-container";
+import NumberFlow from "@number-flow/react";
+import { motion } from "framer-motion";
 
 export default function DashboardOverview() {
   const { data: userData } = useGetCurrentUser();
@@ -49,6 +50,7 @@ export default function DashboardOverview() {
 
   const { data: summaryRes, isLoading } = useGetDashboardSummary({
     scope: "department",
+    departmentId: user?.departmentId || undefined,
   } as any);
 
   const stats = summaryRes?.status === 200 ? (summaryRes.data as any) : null;
@@ -158,10 +160,26 @@ export default function DashboardOverview() {
         </div>
       </div>
 
-      {/* KPI Metric Cards (Apple Widget Style) */}
-      <MotionContainer className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Metric Cards (Apple Widget Style with NumberFlow & Motion) */}
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: { staggerChildren: 0.08 },
+          },
+        }}
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
         {/* Metric 1: Invoices recorded */}
-        <MotionCard className="h-full">
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
           <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
@@ -173,8 +191,8 @@ export default function DashboardOverview() {
                 </div>
               </div>
               <div className="mt-4">
-                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  {totalInvoicesCurrentMonth.toLocaleString()}
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-baseline">
+                  <NumberFlow value={totalInvoicesCurrentMonth} />
                   <span className="text-sm font-normal text-muted-foreground ml-1.5">
                     รายการ
                   </span>
@@ -185,10 +203,15 @@ export default function DashboardOverview() {
               </div>
             </CardContent>
           </Card>
-        </MotionCard>
+        </motion.div>
 
         {/* Metric 2: Total Paid */}
-        <MotionCard className="h-full">
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
           <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
@@ -200,8 +223,11 @@ export default function DashboardOverview() {
                 </div>
               </div>
               <div className="mt-4">
-                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                  {formatCurrency(totalPaidCurrentMonth)}
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-baseline">
+                  <NumberFlow
+                    value={totalPaidCurrentMonth}
+                    format={{ style: "currency", currency: "THB", maximumFractionDigits: 0 }}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground/80 mt-1">
                   ยอดขอเบิกจ่ายสำเร็จแล้ว
@@ -209,10 +235,15 @@ export default function DashboardOverview() {
               </div>
             </CardContent>
           </Card>
-        </MotionCard>
+        </motion.div>
 
         {/* Metric 3: Pending */}
-        <MotionCard className="h-full">
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
           <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
@@ -224,8 +255,8 @@ export default function DashboardOverview() {
                 </div>
               </div>
               <div className="mt-4">
-                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
-                  {totalPendingBills.toLocaleString()}
+                <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 dark:text-amber-400 flex items-baseline">
+                  <NumberFlow value={totalPendingBills} />
                   <span className="text-sm font-normal text-muted-foreground ml-1.5">
                     รายการ
                   </span>
@@ -239,10 +270,15 @@ export default function DashboardOverview() {
               </div>
             </CardContent>
           </Card>
-        </MotionCard>
+        </motion.div>
 
         {/* Metric 4: Anomalies */}
-        <MotionCard className="h-full">
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 16 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+          }}
+        >
           <Card className="apple-card-hover border-black/[0.06] dark:border-white/[0.08] h-full">
             <CardContent className="p-5 flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
@@ -261,13 +297,13 @@ export default function DashboardOverview() {
               </div>
               <div className="mt-4">
                 <div
-                  className={`text-2xl sm:text-3xl font-bold tracking-tight ${
+                  className={`text-2xl sm:text-3xl font-bold tracking-tight flex items-baseline ${
                     totalAnomalies > 0
                       ? "text-destructive"
                       : "text-foreground"
                   }`}
                 >
-                  {totalAnomalies.toLocaleString()}
+                  <NumberFlow value={totalAnomalies} />
                   <span className="text-sm font-normal text-muted-foreground ml-1.5">
                     รายการ
                   </span>
@@ -285,8 +321,8 @@ export default function DashboardOverview() {
               </div>
             </CardContent>
           </Card>
-        </MotionCard>
-      </MotionContainer>
+        </motion.div>
+      </motion.div>
 
       {/* Quick Shortcuts Grid (Apple Bento Box style) */}
       <div>
@@ -302,180 +338,168 @@ export default function DashboardOverview() {
           </span>
         </div>
 
-        <MotionContainer className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-          <MotionItem>
-            <Link
-              href="/bills/new"
-              className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-md cursor-pointer h-full"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 group-hover:scale-105 transition-transform">
-                    <FilePlus2 className="size-5" />
-                  </div>
-                  <Badge
-                    variant="success"
-                    className="text-[10px] h-5"
-                  >
-                    บันทึกข้อมูล
-                  </Badge>
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          <Link
+            href="/bills/new"
+            className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-md cursor-pointer"
+          >
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 group-hover:scale-105 transition-transform">
+                  <FilePlus2 className="size-5" />
                 </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                  บันทึกบิลใหม่
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                  บันทึกใบแจ้งหนี้ค่าไฟฟ้า น้ำประปา โทรศัพท์ เพื่อขอเบิกจ่าย
-                </p>
+                <Badge
+                  variant="success"
+                  className="text-[10px] h-5"
+                >
+                  บันทึกข้อมูล
+                </Badge>
               </div>
-              <div className="mt-3.5 flex items-center text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <span>สร้างรายการ</span>
-                <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
-          </MotionItem>
+              <h3 className="font-semibold text-sm text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                บันทึกบิลใหม่
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                บันทึกใบแจ้งหนี้ค่าไฟฟ้า น้ำประปา โทรศัพท์ เพื่อขอเบิกจ่าย
+              </p>
+            </div>
+            <div className="mt-3.5 flex items-center text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <span>สร้างรายการ</span>
+              <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
 
-          <MotionItem>
-            <Link
-              href="/bills"
-              className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-blue-500/40 hover:shadow-md cursor-pointer h-full"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 group-hover:scale-105 transition-transform">
-                    <FileText className="size-5" />
-                  </div>
-                  <Badge
-                    variant="default"
-                    className="text-[10px] h-5"
-                  >
-                    จัดการบิล
-                  </Badge>
+          <Link
+            href="/bills"
+            className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-blue-500/40 hover:shadow-md cursor-pointer"
+          >
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                  <FileText className="size-5" />
                 </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  รายการค่าใช้จ่ายหน่วยงาน
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                  ตรวจสอบประวัติการเบิกจ่าย สถานะบิล และแก้ไขข้อมูล
-                </p>
+                <Badge
+                  variant="default"
+                  className="text-[10px] h-5"
+                >
+                  จัดการบิล
+                </Badge>
               </div>
-              <div className="mt-3.5 flex items-center text-xs font-medium text-blue-600 dark:text-blue-400">
-                <span>ดูรายการบิล</span>
-                <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
-          </MotionItem>
+              <h3 className="font-semibold text-sm text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                รายการค่าใช้จ่ายหน่วยงาน
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                ตรวจสอบประวัติการเบิกจ่าย สถานะบิล และแก้ไขข้อมูล
+              </p>
+            </div>
+            <div className="mt-3.5 flex items-center text-xs font-medium text-blue-600 dark:text-blue-400">
+              <span>ดูรายการบิล</span>
+              <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
 
-          <MotionItem>
-            <Link
-              href="/services"
-              className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-md cursor-pointer h-full"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 group-hover:scale-105 transition-transform">
-                    <Activity className="size-5" />
-                  </div>
-                  <Badge
-                    variant="warning"
-                    className="text-[10px] h-5"
-                  >
-                    ทะเบียนบริการ
-                  </Badge>
+          <Link
+            href="/services"
+            className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-md cursor-pointer"
+          >
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 group-hover:scale-105 transition-transform">
+                  <Activity className="size-5" />
                 </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-                  รหัสเครื่องวัด / เบอร์โทร
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                  ทะเบียนเลขมิเตอร์ไฟฟ้า น้ำประปา และเบอร์โทรศัพท์ของหน่วยงาน
-                </p>
+                <Badge
+                  variant="warning"
+                  className="text-[10px] h-5"
+                >
+                  ทะเบียนบริการ
+                </Badge>
               </div>
-              <div className="mt-3.5 flex items-center text-xs font-medium text-amber-600 dark:text-amber-400">
-                <span>จัดการทะเบียน</span>
-                <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
-          </MotionItem>
+              <h3 className="font-semibold text-sm text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                รหัสเครื่องวัด / เบอร์โทร
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                ทะเบียนเลขมิเตอร์ไฟฟ้า น้ำประปา และเบอร์โทรศัพท์ของหน่วยงาน
+              </p>
+            </div>
+            <div className="mt-3.5 flex items-center text-xs font-medium text-amber-600 dark:text-amber-400">
+              <span>จัดการทะเบียน</span>
+              <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
 
-          <MotionItem>
-            <Link
-              href="/notifications"
-              className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-md cursor-pointer h-full"
-            >
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 group-hover:scale-105 transition-transform">
-                    <Bell className="size-5" />
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] h-5"
-                  >
-                    การแจ้งเตือน
-                  </Badge>
+          <Link
+            href="/notifications"
+            className="group relative flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 p-4.5 backdrop-blur-xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-md cursor-pointer"
+          >
+            <div>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 group-hover:scale-105 transition-transform">
+                  <Bell className="size-5" />
                 </div>
-                <h3 className="font-semibold text-sm text-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                  ศูนย์การแจ้งเตือน
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                  ติดตามการแจ้งเตือนเตือนชำระบิลและแจ้งเตือนงบประมาณ
-                </p>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] h-5"
+                >
+                  การแจ้งเตือน
+                </Badge>
               </div>
-              <div className="mt-3.5 flex items-center text-xs font-medium text-purple-600 dark:text-purple-400">
-                <span>ดูการแจ้งเตือน</span>
-                <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
-              </div>
-            </Link>
-          </MotionItem>
-        </MotionContainer>
+              <h3 className="font-semibold text-sm text-foreground group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                ศูนย์การแจ้งเตือน
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                ติดตามการแจ้งเตือนเตือนชำระบิลและแจ้งเตือนงบประมาณ
+              </p>
+            </div>
+            <div className="mt-3.5 flex items-center text-xs font-medium text-purple-600 dark:text-purple-400">
+              <span>ดูการแจ้งเตือน</span>
+              <ArrowRight className="ml-1 size-3.5 transition-transform group-hover:translate-x-1" />
+            </div>
+          </Link>
+        </div>
       </div>
 
       {/* Analytics Charts Section */}
-      <MotionContainer className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-        <MotionItem className="col-span-1 md:col-span-2 lg:col-span-5">
-          <Card className="border-black/[0.06] dark:border-white/[0.08] h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold tracking-tight">
-                แนวโน้มการเบิกจ่ายค่าสาธารณูปโภคของหน่วยงาน
-              </CardTitle>
-              <CardDescription>
-                กราฟเปรียบเทียบค่าใช้จ่ายแต่ละประเภทสาธารณูปโภค
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-2">
-              {trendData.length > 0 ? (
-                <TrendChart data={trendData} />
-              ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
-                  ไม่มีข้อมูลเพียงพอสำหรับการแสดงกราฟ
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </MotionItem>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+        <Card className="col-span-1 md:col-span-2 lg:col-span-5 border-black/[0.06] dark:border-white/[0.08]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold tracking-tight">
+              แนวโน้มการเบิกจ่ายค่าสาธารณูปโภคของหน่วยงาน
+            </CardTitle>
+            <CardDescription>
+              กราฟเปรียบเทียบค่าใช้จ่ายแต่ละประเภทสาธารณูปโภค
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-2">
+            {trendData.length > 0 ? (
+              <TrendChart data={trendData} />
+            ) : (
+              <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
+                ไม่มีข้อมูลเพียงพอสำหรับการแสดงกราฟ
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <MotionItem className="col-span-1 md:col-span-2 lg:col-span-2">
-          <Card className="border-black/[0.06] dark:border-white/[0.08] h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold tracking-tight">
-                สถานะบิลของหน่วยงาน
-              </CardTitle>
-              <CardDescription>สัดส่วนสถานะบิลทั้งหมด</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-2">
-              {statusData.some((d) => d.value > 0) ? (
-                <StatusPieChart data={statusData} />
-              ) : (
-                <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
-                  ไม่มีข้อมูล
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </MotionItem>
-      </MotionContainer>
+        <Card className="col-span-1 md:col-span-2 lg:col-span-2 border-black/[0.06] dark:border-white/[0.08]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold tracking-tight">
+              สถานะบิลของหน่วยงาน
+            </CardTitle>
+            <CardDescription>สัดส่วนสถานะบิลทั้งหมด</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-2">
+            {statusData.some((d) => d.value > 0) ? (
+              <StatusPieChart data={statusData} />
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
+                ไม่มีข้อมูล
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recent Anomalies Table Card */}
-      <MotionItem>
+      <div>
         <Card className="border-black/[0.06] dark:border-white/[0.08]">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -501,7 +525,7 @@ export default function DashboardOverview() {
             <RecentAnomaliesTable anomalies={recentAnomalies} />
           </CardContent>
         </Card>
-      </MotionItem>
+      </div>
     </div>
   );
 }

@@ -213,7 +213,7 @@ func (q *Queries) DeleteBill(ctx context.Context, id string) error {
 const getBillActivityLogs = `-- name: GetBillActivityLogs :many
 SELECT l.id, l.bill_id, l.user_id, l.action, l.details, l.created_at, u.name AS user_name, u.email AS user_email
 FROM bill_activity_logs l
-LEFT JOIN users u ON l.user_id = u.id
+LEFT JOIN "user" u ON l.user_id = u.id
 WHERE l.bill_id = $1
 ORDER BY l.created_at DESC
 `

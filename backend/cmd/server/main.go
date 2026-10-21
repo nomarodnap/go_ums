@@ -23,6 +23,7 @@ import (
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
 	"github.com/dof/ums-backend/internal/handlers"
+	"github.com/dof/ums-backend/internal/storage"
 	"github.com/dof/ums-backend/internal/worker"
 )
 
@@ -72,8 +73,8 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	// Auth Middleware
-	router.Use(auth.AuthMiddleware(cfg.JWTSecret))
+	// Auth Middleware (Better Auth Session + Redis + fallback JWT)
+	router.Use(auth.AuthMiddleware(pool, redisService, cfg.JWTSecret))
 
 	// 3. Setup Huma v2 with OpenAPI 3.1
 	humaConfig := huma.DefaultConfig("ระบบรายงานค่าสาธารณูปโภค กรมประมง API", "2.0.0")
@@ -91,26 +92,34 @@ func main() {
 	// Initialize Email Service
 	emailService := email.NewEmailService(cfg)
 
-	// Initialize Asynq Background Task Queue (Redis)
+	// Initialize Asynq Background Task Queue (Redis) only if Redis is available
 	var taskDistributor worker.TaskDistributor
-	taskDistributor, err = worker.NewRedisTaskDistributor(cfg.RedisURL)
-	if err != nil {
-		log.Printf("[Asynq] Warning: Failed to initialize task distributor: %v", err)
+	if redisService != nil && redisService.Client != nil {
+		taskDistributor, err = worker.NewRedisTaskDistributor(cfg.RedisURL)
+		if err != nil {
+			log.Printf("[Asynq] Warning: Failed to initialize task distributor: %v", err)
+		} else {
+			defer taskDistributor.Close()
+		}
+
+		taskProcessor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
+		if err != nil {
+			log.Printf("[Asynq] Warning: Failed to initialize task processor: %v", err)
+		} else {
+			go func() {
+				if err := taskProcessor.Start(); err != nil {
+					log.Printf("[Asynq Worker] Server stopped: %v", err)
+				}
+			}()
+			defer taskProcessor.Shutdown()
+		}
 	} else {
-		defer taskDistributor.Close()
+		log.Printf("[Asynq] Notice: Running without Redis task queue and background worker.")
 	}
 
-	taskProcessor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
-	if err != nil {
-		log.Printf("[Asynq] Warning: Failed to initialize task processor: %v", err)
-	} else {
-		go func() {
-			if err := taskProcessor.Start(); err != nil {
-				log.Printf("[Asynq Worker] Server stopped: %v", err)
-			}
-		}()
-		defer taskProcessor.Shutdown()
-	}
+	// Initialize Storage Service (MinIO with local disk fallback)
+	storageService := storage.NewMinIOStorage(cfg)
+	handlers.RegisterUploadRoutes(router, storageService)
 
 	// 4. Register Domain Handlers
 	handlers.RegisterAuthRoutes(api, pool, cfg, emailService, taskDistributor)
@@ -120,6 +129,7 @@ func main() {
 	handlers.RegisterBudgetRoutes(api, pool)
 	handlers.RegisterDashboardRoutes(api, pool)
 	handlers.RegisterNotificationRoutes(api, pool)
+	handlers.RegisterReportRoutes(api, pool)
 	handlers.RegisterUserRoutes(api, pool, cfg, emailService, taskDistributor)
 
 	// 5. Health check

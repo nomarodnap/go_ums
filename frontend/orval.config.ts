@@ -3,7 +3,7 @@ import { defineConfig } from "orval";
 export default defineConfig({
   umsApi: {
     input: {
-      target: "http://localhost:8080/openapi.json",
+      target: "../backend/openapi.json",
     },
     output: {
       mode: "tags-split",

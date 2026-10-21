@@ -12,21 +12,20 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (
-    id, name, email, password_hash, email_verified, image, role,
+INSERT INTO "user" (
+    id, name, email, email_verified, image, role,
     banned, ban_reason, ban_expires, department_id, phone,
     created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()
 )
-RETURNING id, name, email, password_hash, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, created_at, updated_at
+RETURNING id, name, email, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, clerk_id, created_at, updated_at
 `
 
 type CreateUserParams struct {
 	ID            string             `json:"id"`
 	Name          string             `json:"name"`
 	Email         string             `json:"email"`
-	PasswordHash  string             `json:"password_hash"`
 	EmailVerified bool               `json:"email_verified"`
 	Image         pgtype.Text        `json:"image"`
 	Role          string             `json:"role"`
@@ -42,7 +41,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.ID,
 		arg.Name,
 		arg.Email,
-		arg.PasswordHash,
 		arg.EmailVerified,
 		arg.Image,
 		arg.Role,
@@ -57,7 +55,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ID,
 		&i.Name,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailVerified,
 		&i.Image,
 		&i.Role,
@@ -66,6 +63,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.BanExpires,
 		&i.DepartmentID,
 		&i.Phone,
+		&i.ClerkID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -73,7 +71,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const deleteUser = `-- name: DeleteUser :exec
-DELETE FROM users
+DELETE FROM "user"
 WHERE id = $1
 `
 
@@ -83,7 +81,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, created_at, updated_at FROM users
+SELECT id, name, email, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, clerk_id, created_at, updated_at FROM "user"
 WHERE email = $1 LIMIT 1
 `
 
@@ -94,7 +92,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ID,
 		&i.Name,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailVerified,
 		&i.Image,
 		&i.Role,
@@ -103,6 +100,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.BanExpires,
 		&i.DepartmentID,
 		&i.Phone,
+		&i.ClerkID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -110,7 +108,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, created_at, updated_at FROM users
+SELECT id, name, email, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, clerk_id, created_at, updated_at FROM "user"
 WHERE id = $1 LIMIT 1
 `
 
@@ -121,7 +119,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.ID,
 		&i.Name,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailVerified,
 		&i.Image,
 		&i.Role,
@@ -130,6 +127,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.BanExpires,
 		&i.DepartmentID,
 		&i.Phone,
+		&i.ClerkID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -139,7 +137,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 const listUsers = `-- name: ListUsers :many
 SELECT u.id, u.name, u.email, u.email_verified, u.image, u.role, u.banned, u.ban_reason, u.department_id, u.phone, u.created_at, u.updated_at,
        d.full_name AS department_name
-FROM users u
+FROM "user" u
 LEFT JOIN departments d ON u.department_id = d.id
 ORDER BY u.created_at DESC
 `
@@ -194,24 +192,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
-const updatePassword = `-- name: UpdatePassword :exec
-UPDATE users
-SET password_hash = $2, updated_at = NOW()
-WHERE id = $1
-`
-
-type UpdatePasswordParams struct {
-	ID           string `json:"id"`
-	PasswordHash string `json:"password_hash"`
-}
-
-func (q *Queries) UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error {
-	_, err := q.db.Exec(ctx, updatePassword, arg.ID, arg.PasswordHash)
-	return err
-}
-
 const updateUser = `-- name: UpdateUser :one
-UPDATE users
+UPDATE "user"
 SET 
     name = $2,
     role = $3,
@@ -221,7 +203,7 @@ SET
     ban_reason = $7,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, email, password_hash, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, created_at, updated_at
+RETURNING id, name, email, email_verified, image, role, banned, ban_reason, ban_expires, department_id, phone, clerk_id, created_at, updated_at
 `
 
 type UpdateUserParams struct {
@@ -249,7 +231,6 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.ID,
 		&i.Name,
 		&i.Email,
-		&i.PasswordHash,
 		&i.EmailVerified,
 		&i.Image,
 		&i.Role,
@@ -258,6 +239,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.BanExpires,
 		&i.DepartmentID,
 		&i.Phone,
+		&i.ClerkID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

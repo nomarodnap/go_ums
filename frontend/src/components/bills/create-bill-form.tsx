@@ -1380,11 +1380,7 @@ export function CreateBillForm({
                           บาท)
                         </p>
                       )}
-                      {fieldErrors?.paidAmount && (
-                        <p className="text-xs text-destructive">
-                          {fieldErrors.paidAmount[0]}
-                        </p>
-                      )}
+                      <ErrorSpeechBubble message={fieldErrors?.paidAmount} />
                     </div>
                   </div>
 

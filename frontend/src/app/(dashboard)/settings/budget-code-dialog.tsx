@@ -27,6 +27,7 @@ import {
 } from "@/lib/api/generated/budgets/budgets";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { ErrorSpeechBubble } from "@/components/ui/error-speech-bubble";
 
 export type BudgetCodeItem = {
   id: string;
@@ -155,7 +156,7 @@ export function BudgetCodeDialog({
 
         <form noValidate onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="grid gap-2">
+            <div className="grid gap-2 relative">
               <Label htmlFor="fiscalYear">
                 ปีงบประมาณ (พ.ศ.) <span className="text-destructive">*</span>
               </Label>
@@ -181,12 +182,10 @@ export function BudgetCodeDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {errors.fiscalYear && (
-                <p className="text-xs text-rose-500 font-medium">{errors.fiscalYear}</p>
-              )}
+              <ErrorSpeechBubble message={errors.fiscalYear} />
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-2 relative">
               <Label htmlFor="code">
                 รหัสงบประมาณ <span className="text-destructive">*</span>
               </Label>
@@ -200,9 +199,7 @@ export function BudgetCodeDialog({
                 placeholder="เช่น 2800100000000000"
                 className={errors.code ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
               />
-              {errors.code && (
-                <p className="text-xs text-rose-500 font-medium">{errors.code}</p>
-              )}
+              <ErrorSpeechBubble message={errors.code} />
             </div>
           </div>
 
@@ -217,7 +214,7 @@ export function BudgetCodeDialog({
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
             <div>
               <Label className="text-sm font-medium">สถานะการใช้งาน</Label>
               <p className="text-xs text-muted-foreground">

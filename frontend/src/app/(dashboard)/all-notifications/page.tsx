@@ -1,25 +1,38 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useListNotifications } from "@/lib/api/generated/notifications/notifications";
+import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { NotificationList } from "@/components/notifications/notification-list";
-import { Loader2 } from "lucide-react";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 
 export default function AllNotificationsPage() {
-  const { data: notifRes, isLoading } = useListNotifications();
+  const router = useRouter();
+  const { data: meRes, isLoading: loadingMe } = useGetCurrentUser();
+  const me = meRes?.status === 200 ? meRes.data.user : null;
+  const userRole = me?.role;
+
+  useEffect(() => {
+    if (!loadingMe && userRole && !["admin", "auditor"].includes(userRole)) {
+      router.replace("/unauthorized");
+    }
+  }, [loadingMe, userRole, router]);
+
+  const { data: notifRes, isLoading: loadingNotifs } = useListNotifications({
+    scope: "all",
+  });
   const notifications =
     notifRes?.status === 200 && Array.isArray(notifRes.data)
       ? notifRes.data
       : [];
 
+  const isLoading = loadingMe || loadingNotifs;
+
   return (
     <div className="flex flex-col gap-6">
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground text-sm">
-            กำลังโหลดรายการแจ้งเตือนทั้งหมด...
-          </span>
-        </div>
+        <LoadingEffect message="กำลังโหลดรายการแจ้งเตือนทั้งหมด..." />
       ) : (
         <NotificationList
           notifications={notifications}

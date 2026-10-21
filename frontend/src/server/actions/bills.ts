@@ -1,8 +1,6 @@
 "use server";
 
 import { z } from "zod";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
@@ -11,24 +9,52 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:8080";
 
+async function getAuthHeaders() {
+  const cookieStore = await cookies();
+  const authToken =
+    cookieStore.get("auth_token")?.value ||
+    cookieStore.get("better-auth.session_token")?.value ||
+    cookieStore.get("__Secure-better-auth.session_token")?.value;
+  const reqHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (authToken) {
+    reqHeaders["Authorization"] = `Bearer ${authToken}`;
+    reqHeaders["Cookie"] = `auth_token=${authToken}; better-auth.session_token=${authToken}`;
+  }
+  return reqHeaders;
+}
+
 async function saveFile(file: File | null) {
   if (!file || file.size === 0) return null;
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
-  let baseName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-  let ext = "";
-  const lastDot = baseName.lastIndexOf(".");
-  if (lastDot !== -1 && lastDot > 0) {
-    ext = baseName.substring(lastDot);
-    baseName = baseName.substring(0, lastDot);
-  }
-  if (baseName.length > 50) baseName = baseName.substring(0, 50);
 
-  const filename = `${crypto.randomUUID()}-${baseName}${ext}`;
-  const uploadDir = join(process.cwd(), "public", "uploads");
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(join(uploadDir, filename), buffer);
-  return `/uploads/${filename}`;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const authHeaders = await getAuthHeaders();
+  const headers: Record<string, string> = {};
+  if (authHeaders["Authorization"]) {
+    headers["Authorization"] = authHeaders["Authorization"];
+  }
+  if (authHeaders["Cookie"]) {
+    headers["Cookie"] = authHeaders["Cookie"];
+  }
+
+  const res = await fetch(`${BACKEND_URL}/api/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(
+      `Failed to upload file to storage: ${errorText || res.statusText}`,
+    );
+  }
+
+  const data = (await res.json()) as { url: string };
+  return data.url;
 }
 
 const createBillSchema = z
@@ -136,8 +162,48 @@ const createBillSchema = z
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "กรุณาระบุรหัสศูนย์ต้นทุน",
+          message:
+            "ไม่พบรหัสศูนย์ต้นทุนของหน่วยงานที่เบิกจ่าย (กรุณาตรวจสอบข้อมูลหน่วยงานหรือระบุหน่วยงานฝากเบิก)",
           path: ["costCenterCode"],
+        });
+      }
+      if (!data.budgetCode || data.budgetCode.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุหรือเลือกรหัสงบประมาณ",
+          path: ["budgetCode"],
+        });
+      }
+      if (!data.paymentDocNumber || data.paymentDocNumber.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุเลขเอกสาร",
+          path: ["paymentDocNumber"],
+        });
+      }
+      if (!data.docType || data.docType.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุประเภทเอกสาร (เช่น KC)",
+          path: ["docType"],
+        });
+      }
+      if (!data.accountCode || data.accountCode.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุรหัสแยกประเภท",
+          path: ["accountCode"],
+        });
+      }
+      if (
+        data.paidAmount === undefined ||
+        isNaN(data.paidAmount) ||
+        data.paidAmount <= 0
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุจำนวนเงินที่เบิกจ่าย",
+          path: ["paidAmount"],
         });
       }
     }
@@ -150,9 +216,9 @@ const updateBillSchema = createBillSchema.extend({
 export async function createBill(prevState: unknown, formData: FormData) {
   try {
     const rawData = {
-      departmentId: formData.get("departmentId") || undefined,
-      utilityType: formData.get("utilityType") || undefined,
-      billingMonth: formData.get("billingMonth") || undefined,
+      departmentId: (formData.get("departmentId") as string) || "",
+      utilityType: (formData.get("utilityType") as string) || "",
+      billingMonth: (formData.get("billingMonth") as string) || "",
       provider: formData.get("provider") || undefined,
       serviceNumber: formData.get("serviceNumber")?.toString() || "",
       serviceBreakdown:
@@ -165,7 +231,7 @@ export async function createBill(prevState: unknown, formData: FormData) {
       invoiceDate: formData.get("invoiceDate") || undefined,
       receivedDate: formData.get("receivedDate") || undefined,
       invoiceStatus: formData.get("invoiceStatus") || undefined,
-      paymentStatus: formData.get("paymentStatus") || "PENDING",
+      paymentStatus: formData.get("paymentStatus"),
       paymentDate: formData.get("paymentDate") || undefined,
       receiptPaymentDate: formData.get("receiptPaymentDate") || undefined,
       sentToDisbursingDate: formData.get("sentToDisbursingDate") || undefined,
@@ -178,7 +244,10 @@ export async function createBill(prevState: unknown, formData: FormData) {
       budgetCode: formData.get("budgetCode") || undefined,
       paidAmount: formData.get("paidAmount") || undefined,
       disbursingType: formData.get("disbursingType") || undefined,
-      depositUnitId: formData.get("depositUnit") || undefined,
+      depositUnitId:
+        formData.get("depositUnit") ||
+        formData.get("depositUnitId") ||
+        undefined,
     };
 
     const parsed = createBillSchema.safeParse(rawData);
@@ -191,13 +260,47 @@ export async function createBill(prevState: unknown, formData: FormData) {
 
     const invoiceFile = formData.get("attachmentInvoice") as File | null;
     const receiptFile = formData.get("attachmentReceipt") as File | null;
-    const directPaymentFile = formData.get("attachmentDirectPayment") as File | null;
+    const directPaymentFile = formData.get(
+      "attachmentDirectPayment",
+    ) as File | null;
+    const ktbReportFile = formData.get("attachmentKtbReport") as File | null;
 
-    const [invoicePath, receiptPath, directPaymentPath] = await Promise.all([
-      saveFile(invoiceFile),
-      saveFile(receiptFile),
-      saveFile(directPaymentFile),
-    ]);
+    const fileErrors: Record<string, string[]> = {};
+    if (
+      parsed.data.invoiceStatus === "RECEIVED" &&
+      (!invoiceFile || invoiceFile.size === 0)
+    ) {
+      fileErrors.attachmentInvoice = ["กรุณาแนบไฟล์เอกสารใบแจ้งหนี้"];
+    }
+
+    if (parsed.data.paymentStatus === "PAID") {
+      if (!receiptFile || receiptFile.size === 0) {
+        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
+      }
+      if (
+        (!directPaymentFile || directPaymentFile.size === 0) &&
+        (!ktbReportFile || ktbReportFile.size === 0)
+      ) {
+        fileErrors.attachmentDirectPayment = [
+          "กรุณาแนบไฟล์รายงานจ่ายตรง / รายงาน KTB",
+        ];
+      }
+    }
+
+    if (Object.keys(fileErrors).length > 0) {
+      return {
+        success: false,
+        error: fileErrors,
+      };
+    }
+
+    const [invoicePath, receiptPath, directPaymentPath, ktbReportPath] =
+      await Promise.all([
+        saveFile(invoiceFile),
+        saveFile(receiptFile),
+        saveFile(directPaymentFile),
+        saveFile(ktbReportFile),
+      ]);
 
     const [yearStr, monthStr] = (parsed.data.billingMonth || "").split("-");
     const billingYear = parseInt(yearStr, 10) || new Date().getFullYear();
@@ -236,19 +339,12 @@ export async function createBill(prevState: unknown, formData: FormData) {
       attachmentInvoice: invoicePath || undefined,
       attachmentReceipt: receiptPath || undefined,
       attachmentDirectPayment: directPaymentPath || undefined,
+      attachmentKtbReport: ktbReportPath || undefined,
       isPendingBillOnly: false,
       depositUnitId: parsed.data.disbursingType === "หน่วยงานฝากเบิก" ? parsed.data.depositUnitId : undefined,
     };
 
-    const cookieStore = await cookies();
-    const authToken = cookieStore.get("auth_token")?.value;
-    const reqHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (authToken) {
-      reqHeaders["Authorization"] = `Bearer ${authToken}`;
-      reqHeaders["Cookie"] = `auth_token=${authToken}`;
-    }
+    const reqHeaders = await getAuthHeaders();
 
     const res = await fetch(`${BACKEND_URL}/api/bills`, {
       method: "POST",
@@ -280,9 +376,9 @@ export async function updateBill(prevState: unknown, formData: FormData) {
   try {
     const rawData = {
       billId: formData.get("billId")?.toString() || "",
-      departmentId: formData.get("departmentId") || undefined,
-      utilityType: formData.get("utilityType") || undefined,
-      billingMonth: formData.get("billingMonth") || undefined,
+      departmentId: (formData.get("departmentId") as string) || "",
+      utilityType: (formData.get("utilityType") as string) || "",
+      billingMonth: (formData.get("billingMonth") as string) || "",
       provider: formData.get("provider") || undefined,
       serviceNumber: formData.get("serviceNumber")?.toString() || "",
       serviceBreakdown:
@@ -295,7 +391,7 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       invoiceDate: formData.get("invoiceDate") || undefined,
       receivedDate: formData.get("receivedDate") || undefined,
       invoiceStatus: formData.get("invoiceStatus") || undefined,
-      paymentStatus: formData.get("paymentStatus") || "PENDING",
+      paymentStatus: formData.get("paymentStatus"),
       paymentDate: formData.get("paymentDate") || undefined,
       receiptPaymentDate: formData.get("receiptPaymentDate") || undefined,
       sentToDisbursingDate: formData.get("sentToDisbursingDate") || undefined,
@@ -308,7 +404,10 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       budgetCode: formData.get("budgetCode") || undefined,
       paidAmount: formData.get("paidAmount") || undefined,
       disbursingType: formData.get("disbursingType") || undefined,
-      depositUnitId: formData.get("depositUnit") || undefined,
+      depositUnitId:
+        formData.get("depositUnit") ||
+        formData.get("depositUnitId") ||
+        undefined,
     };
 
     const parsed = updateBillSchema.safeParse(rawData);
@@ -319,15 +418,69 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       };
     }
 
+    const reqHeaders = await getAuthHeaders();
+
+    const existingRes = await fetch(
+      `${BACKEND_URL}/api/bills/${parsed.data.billId}`,
+      {
+        headers: reqHeaders,
+        cache: "no-store",
+      },
+    );
+    const existingJson = existingRes.ok
+      ? await existingRes.json().catch(() => ({}))
+      : {};
+    const existingBill = existingJson?.body || existingJson;
+
     const invoiceFile = formData.get("attachmentInvoice") as File | null;
     const receiptFile = formData.get("attachmentReceipt") as File | null;
-    const directPaymentFile = formData.get("attachmentDirectPayment") as File | null;
+    const directPaymentFile = formData.get(
+      "attachmentDirectPayment",
+    ) as File | null;
+    const ktbReportFile = formData.get("attachmentKtbReport") as File | null;
 
-    const [invoicePath, receiptPath, directPaymentPath] = await Promise.all([
-      saveFile(invoiceFile),
-      saveFile(receiptFile),
-      saveFile(directPaymentFile),
-    ]);
+    const fileErrors: Record<string, string[]> = {};
+    if (
+      parsed.data.invoiceStatus === "RECEIVED" &&
+      !existingBill?.attachmentInvoice &&
+      (!invoiceFile || invoiceFile.size === 0)
+    ) {
+      fileErrors.attachmentInvoice = ["กรุณาแนบไฟล์เอกสารใบแจ้งหนี้"];
+    }
+
+    if (parsed.data.paymentStatus === "PAID") {
+      if (
+        !existingBill?.attachmentReceipt &&
+        (!receiptFile || receiptFile.size === 0)
+      ) {
+        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
+      }
+      if (
+        !existingBill?.attachmentDirectPayment &&
+        !existingBill?.attachmentKtbReport &&
+        (!directPaymentFile || directPaymentFile.size === 0) &&
+        (!ktbReportFile || ktbReportFile.size === 0)
+      ) {
+        fileErrors.attachmentDirectPayment = [
+          "กรุณาแนบไฟล์รายงานจ่ายตรง / รายงาน KTB",
+        ];
+      }
+    }
+
+    if (Object.keys(fileErrors).length > 0) {
+      return {
+        success: false,
+        error: fileErrors,
+      };
+    }
+
+    const [invoicePath, receiptPath, directPaymentPath, ktbReportPath] =
+      await Promise.all([
+        saveFile(invoiceFile),
+        saveFile(receiptFile),
+        saveFile(directPaymentFile),
+        saveFile(ktbReportFile),
+      ]);
 
     const [yearStr, monthStr] = (parsed.data.billingMonth || "").split("-");
     const billingYear = parseInt(yearStr, 10) || new Date().getFullYear();
@@ -366,19 +519,10 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       attachmentInvoice: invoicePath || undefined,
       attachmentReceipt: receiptPath || undefined,
       attachmentDirectPayment: directPaymentPath || undefined,
+      attachmentKtbReport: ktbReportPath || undefined,
       isPendingBillOnly: parsed.data.disbursingType === "หน่วยงานฝากเบิก",
       depositUnitId: parsed.data.disbursingType === "หน่วยงานฝากเบิก" ? parsed.data.depositUnitId : undefined,
     };
-
-    const cookieStore = await cookies();
-    const authToken = cookieStore.get("auth_token")?.value;
-    const reqHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (authToken) {
-      reqHeaders["Authorization"] = `Bearer ${authToken}`;
-      reqHeaders["Cookie"] = `auth_token=${authToken}`;
-    }
 
     const res = await fetch(`${BACKEND_URL}/api/bills/${parsed.data.billId}`, {
       method: "PUT",
@@ -425,8 +569,8 @@ export async function getLatestEstimatedAmount(
       { cache: "no-store" },
     );
     if (!res.ok) return null;
-    const json = await res.json();
-    return json.body !== undefined ? json.body : null;
+    const json = await res.json().catch(() => null);
+    return json?.body !== undefined ? json.body : null;
   } catch (err) {
     console.error("Failed to get latest estimated amount:", err);
     return null;
@@ -435,8 +579,10 @@ export async function getLatestEstimatedAmount(
 
 export async function deleteBill(billId: string) {
   try {
+    const reqHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/bills/${billId}`, {
       method: "DELETE",
+      headers: reqHeaders,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -455,9 +601,10 @@ export async function deleteBill(billId: string) {
 
 export async function markBillAsReviewed(billId: string, isReviewed: boolean) {
   try {
+    const reqHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/bills/${billId}/review`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: reqHeaders,
       body: JSON.stringify({ isReviewed }),
     });
     if (!res.ok) {
@@ -477,12 +624,16 @@ export async function markBillAsReviewed(billId: string, isReviewed: boolean) {
 
 export async function getBillLogs(billId: string) {
   try {
+    const reqHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/bills/${billId}/logs`, {
+      headers: reqHeaders,
       cache: "no-store",
     });
     if (!res.ok) return [];
     const json = await res.json();
-    return Array.isArray(json.body) ? json.body : [];
+    if (Array.isArray(json)) return json;
+    if (Array.isArray(json.body)) return json.body;
+    return [];
   } catch {
     return [];
   }

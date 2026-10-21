@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch: # อนุญาตให้กดสั่งรันแมนนวลได้จาก GitHub Actions UI
 
 env:
@@ -32,9 +35,17 @@ jobs:
         working-directory: ./backend
         run: go vet ./...
 
-      - name: Backend - Unit Tests (go test)
+      - name: Backend - GolangCI-Lint
+        uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: ./backend
+          args: --timeout=5m
+
+      - name: Backend - Unit Tests & Concurrency Race Check
         working-directory: ./backend
-        run: go test -v ./...
+        run: go test -v -race ./...
 
       # --- Frontend Checks (Next.js / TypeScript) ---
       - name: Set up Node.js
@@ -52,12 +63,19 @@ jobs:
         working-directory: ./frontend
         run: npm run typecheck
 
+      - name: Frontend - Pre-flight Next.js Build
+        working-directory: ./frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: npm run build
+
   # ========================================================
   # 2. Build & Push Docker Images to GHCR + Trigger Coolify
   # ========================================================
   build-and-push:
     name: Build Docker Images & Deploy
     needs: [quality-check] # ต้องผ่าน Test & Typecheck ก่อนเท่านั้น จึงจะเริ่ม build & deploy
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
