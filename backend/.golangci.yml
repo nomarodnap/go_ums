@@ -24,5 +24,4 @@ issues:
         - errcheck
 
 output:
-  formats:
-    - format: colored-line-number
+  sort-results: true
