@@ -66,7 +66,6 @@ func RegisterNotificationRoutes(api huma.API, pool *pgxpool.Pool) {
 			if targetDept != "" {
 				query += fmt.Sprintf(" AND (n.department_id = $%d OR n.department_id IS NULL)", argIdx)
 				args = append(args, targetDept)
-				argIdx++
 			} else {
 				query += " AND n.department_id IS NULL"
 			}
@@ -75,7 +74,6 @@ func RegisterNotificationRoutes(api huma.API, pool *pgxpool.Pool) {
 			if input.DepartmentID != "" {
 				query += fmt.Sprintf(" AND (n.department_id = $%d OR n.department_id IS NULL)", argIdx)
 				args = append(args, input.DepartmentID)
-				argIdx++
 			}
 		}
 		query += " ORDER BY n.created_at DESC LIMIT 100"

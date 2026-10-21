@@ -59,7 +59,6 @@ func main() {
 	// 3. Setup Chi Router
 	router := chi.NewMux()
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 
@@ -78,7 +77,7 @@ func main() {
 
 	// 3. Setup Huma v2 with OpenAPI 3.1
 	humaConfig := huma.DefaultConfig("ระบบรายงานค่าสาธารณูปโภค กรมประมง API", "2.0.0")
-	humaConfig.OpenAPI.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearerAuth": {
 			Type:         "http",
 			Scheme:       "bearer",

@@ -112,12 +112,10 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 		// Determine user role and permissions
 		user, hasUser := auth.UserFromContext(ctx)
 		isAdmin := false
-		userRole := "user"
 		userDepartmentID := ""
 		if hasUser && user != nil {
-			userRole = user.Role
 			userDepartmentID = user.DepartmentID
-			if userRole == "admin" || userRole == "auditor" || userRole == "strategy_finance" || userRole == "central_staff" {
+			if user.Role == "admin" || user.Role == "auditor" || user.Role == "strategy_finance" || user.Role == "central_staff" {
 				isAdmin = true
 			}
 		}

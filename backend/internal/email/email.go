@@ -102,7 +102,7 @@ func (s *EmailService) SendMail(toEmail, subject, htmlBody string) error {
 
 	var message strings.Builder
 	for k, v := range headers {
-		message.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+		fmt.Fprintf(&message, "%s: %s\r\n", k, v)
 	}
 	message.WriteString("\r\n" + htmlBody)
 

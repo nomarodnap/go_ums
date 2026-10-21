@@ -154,9 +154,7 @@ func AuthMiddleware(pool *pgxpool.Pool, redisService *cache.RedisService, secret
 					tokenStr = strings.ReplaceAll(tokenStr, "%2E", ".")
 					tokenStr = strings.ReplaceAll(tokenStr, "%2e", ".")
 				}
-				if strings.HasPrefix(tokenStr, "s:") {
-					tokenStr = strings.TrimPrefix(tokenStr, "s:")
-				}
+				tokenStr = strings.TrimPrefix(tokenStr, "s:")
 				if strings.Contains(tokenStr, ".") {
 					tokenStr = strings.Split(tokenStr, ".")[0]
 				}

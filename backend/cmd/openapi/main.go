@@ -16,7 +16,7 @@ import (
 func main() {
 	router := chi.NewMux()
 	humaConfig := huma.DefaultConfig("ระบบรายงานค่าสาธารณูปโภค กรมประมง API", "2.0.0")
-	humaConfig.OpenAPI.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+	humaConfig.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"bearerAuth": {
 			Type:         "http",
 			Scheme:       "bearer",
