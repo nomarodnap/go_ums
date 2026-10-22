@@ -12,6 +12,7 @@ import {
   User,
   Bell,
   BellRing,
+  Pencil,
 } from "lucide-react";
 
 import {
@@ -34,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { useGetCurrentUser, useLogout } from "@/lib/api/generated/auth/auth";
 import { useListNotifications } from "@/lib/api/generated/notifications/notifications";
 import { toast } from "sonner";
+import { EditProfileDialog } from "@/components/profile/edit-profile-dialog";
 
 const navMain = [
   {
@@ -103,8 +105,11 @@ const navMain = [
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   user?: {
+    id?: string;
     name: string;
     department: string;
+    email?: string;
+    phone?: string;
     role?: string;
     myDeptUnreadCount?: number;
     allSystemUnreadCount?: number;
@@ -114,6 +119,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 export function AppSidebar({ user: initialUser, ...props }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [profileOpen, setProfileOpen] = React.useState(false);
 
   const { data: userData } = useGetCurrentUser();
   const apiUser = userData?.status === 200 ? userData.data.user : null;
@@ -125,10 +131,13 @@ export function AppSidebar({ user: initialUser, ...props }: AppSidebarProps) {
       : [];
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  const user = initialUser || {
-    name: apiUser?.name || "เจ้าหน้าที่",
-    department: apiUser?.departmentName || "กรมประมง",
-    role: apiUser?.role || "user",
+  const user = {
+    id: apiUser?.id || initialUser?.id,
+    name: apiUser?.name || initialUser?.name || "เจ้าหน้าที่",
+    email: apiUser?.email || (initialUser as any)?.email || "",
+    department: apiUser?.departmentName || initialUser?.department || "กรมประมง",
+    role: apiUser?.role || initialUser?.role || "user",
+    phone: apiUser?.phone || (initialUser as any)?.phone || "",
     myDeptUnreadCount: unreadCount,
     allSystemUnreadCount: unreadCount,
   };
@@ -276,24 +285,35 @@ export function AppSidebar({ user: initialUser, ...props }: AppSidebarProps) {
         <SidebarMenu className="gap-2">
           {user && (
             <SidebarMenuItem>
-              <div className="flex flex-col gap-1.5 p-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.06]">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                title="คลิกเพื่อแก้ไขข้อมูลผู้ใช้งาน (ตนเอง)"
+                className="group w-full flex flex-col gap-1.5 p-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.06] hover:bg-primary/5 hover:border-primary/20 dark:hover:bg-primary/10 dark:hover:border-primary/30 transition-all text-left cursor-pointer"
+              >
                 <div className="flex items-center gap-2.5">
-                  <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-medium text-xs shrink-0">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary font-medium text-xs shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     <User className="size-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-xs text-foreground truncate">
-                      {user.name}
-                    </p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="font-semibold text-xs text-foreground truncate group-hover:text-primary transition-colors">
+                        {user.name}
+                      </p>
+                      <Pencil className="size-3 text-muted-foreground/60 opacity-0 group-hover:opacity-100 group-hover:text-primary transition-all shrink-0" />
+                    </div>
                     <p className="text-[11px] text-muted-foreground/80 truncate">
                       {getRoleLabel(user.role)}
                     </p>
                   </div>
                 </div>
-                <div className="text-[11px] text-muted-foreground/70 line-clamp-1 border-t border-black/[0.04] dark:border-white/[0.06] pt-1.5 mt-0.5">
-                  {user.department}
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground/70 border-t border-black/[0.04] dark:border-white/[0.06] pt-1.5 mt-0.5">
+                  <span className="truncate">{user.department}</span>
+                  <span className="text-[10px] text-primary/80 font-medium group-hover:underline shrink-0 pl-1">
+                    แก้ไขข้อมูล
+                  </span>
                 </div>
-              </div>
+              </button>
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>
@@ -308,6 +328,15 @@ export function AppSidebar({ user: initialUser, ...props }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarFooter>
       <SidebarSeparator />
+
+      {user && (
+        <EditProfileDialog
+          open={profileOpen}
+          onOpenChange={setProfileOpen}
+          user={user}
+          roleLabel={getRoleLabel(user.role)}
+        />
+      )}
     </Sidebar>
   );
 }
