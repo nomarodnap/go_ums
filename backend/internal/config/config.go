@@ -11,7 +11,6 @@ type Config struct {
 	Port          string
 	DatabaseURL   string
 	DirectURL     string
-	RedisURL      string
 	JWTSecret     string
 	CORSOrigin    string
 	UploadDir     string
@@ -93,11 +92,6 @@ func LoadConfig() *Config {
 		smtpPort = "587"
 	}
 
-	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
-	}
-
 	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
 	if minioEndpoint == "" {
 		minioEndpoint = "localhost:9000"
@@ -124,7 +118,6 @@ func LoadConfig() *Config {
 		Port:          port,
 		DatabaseURL:   dbURL,
 		DirectURL:     directURL,
-		RedisURL:      redisURL,
 		JWTSecret:     jwtSecret,
 		CORSOrigin:    corsOrigin,
 		UploadDir:     uploadDir,

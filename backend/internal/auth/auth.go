@@ -138,7 +138,7 @@ func UserFromContext(ctx context.Context) (*Claims, bool) {
 }
 
 // AuthMiddleware creates an HTTP middleware that extracts Better Auth Session or JWT from cookies or headers
-func AuthMiddleware(pool *pgxpool.Pool, redisService *cache.RedisService, secret string) func(http.Handler) http.Handler {
+func AuthMiddleware(pool *pgxpool.Pool, cacheService cache.CacheService, secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenStr := ""
@@ -172,18 +172,18 @@ func AuthMiddleware(pool *pgxpool.Pool, redisService *cache.RedisService, secret
 
 				var claims *Claims
 
-				// A. Check Redis Cache first (for Better Auth session)
-				if redisService != nil && redisService.Client != nil {
+				// A. Check HybridCache first (L1 Otter + L2 Postgres UNLOGGED TABLE)
+				if cacheService != nil {
 					cacheKey := "session:" + tokenStr
-					if cached, err := redisService.Client.Get(r.Context(), cacheKey).Result(); err == nil && cached != "" {
+					if cached, err := cacheService.Get(r.Context(), cacheKey); err == nil && len(cached) > 0 {
 						var cachedClaims Claims
-						if jsonErr := json.Unmarshal([]byte(cached), &cachedClaims); jsonErr == nil {
+						if jsonErr := json.Unmarshal(cached, &cachedClaims); jsonErr == nil {
 							claims = &cachedClaims
 						}
 					}
 				}
 
-				// B. Check Database if not found in Redis
+				// B. Check Database if not found in Cache
 				if claims == nil && pool != nil {
 					queries := db.New(pool)
 					sessionRow, err := queries.GetSessionAndUser(r.Context(), tokenStr)
@@ -202,10 +202,10 @@ func AuthMiddleware(pool *pgxpool.Pool, redisService *cache.RedisService, secret
 								DepartmentID: deptID,
 							}
 
-							// Cache in Redis for 5 minutes
-							if redisService != nil && redisService.Client != nil {
+							// Cache in HybridCache for 5 minutes
+							if cacheService != nil {
 								if data, jsonErr := json.Marshal(claims); jsonErr == nil {
-									_ = redisService.Client.Set(r.Context(), "session:"+tokenStr, string(data), 5*time.Minute).Err()
+									_ = cacheService.Set(r.Context(), "session:"+tokenStr, data, 5*time.Minute)
 								}
 							}
 						}

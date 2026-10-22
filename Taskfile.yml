@@ -23,7 +23,7 @@ tasks:
       - go run cmd/server/main.go
 
   dev:worker:
-    desc: รัน Asynq Background Worker แบบ Standalone
+    desc: รัน River Background Worker แบบ Standalone
     dir: backend
     cmds:
       - go run cmd/worker/main.go
@@ -115,7 +115,7 @@ tasks:
       - go build -o bin/server.exe ./cmd/server
 
   build:worker:
-    desc: คอมไพล์ Asynq Worker เป็นไบนารีไฟล์ใน backend/bin/worker.exe
+    desc: คอมไพล์ River Worker เป็นไบนารีไฟล์ใน backend/bin/worker.exe
     dir: backend
     cmds:
       - cmd: powershell -Command "if (Test-Path bin/worker.exe) { Remove-Item -Force bin/worker.exe }"
@@ -174,19 +174,6 @@ tasks:
     cmds:
       - docker-compose logs -f
 
-  # ==========================================
-  # Redis Tasks
-  # ==========================================
-  redis:ping:
-    desc: ทดสอบการเชื่อมต่อกับ Redis Server (192.168.171.97:6379)
-    cmds:
-      - cmd: redis-cli -h 192.168.171.97 -p 6379 -a qBte3j7A4S1p0y4hRNev5AkO ping
-        ignore_error: true
-
-  redis:cli:
-    desc: เข้าใช้งาน redis-cli กับ Redis Server ภายนอก (192.168.171.97:6379)
-    cmds:
-      - redis-cli -h 192.168.171.97 -p 6379 -a qBte3j7A4S1p0y4hRNev5AkO
 
   # ==========================================
   # Setup & Maintenance

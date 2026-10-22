@@ -249,7 +249,7 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
 		if distributor != nil {
 			if err := distributor.DistributeTaskSendEmail(ctx, userEmail, name, resetURL); err != nil {
-				log.Printf("[Auth] Failed to enqueue reset email via Asynq, fallback to sync: %v", err)
+				log.Printf("[Auth] Failed to enqueue reset email via River, fallback to sync: %v", err)
 				_ = emailService.SendResetPasswordEmail(userEmail, name, resetURL)
 			}
 		} else {

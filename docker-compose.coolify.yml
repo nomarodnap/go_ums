@@ -47,7 +47,7 @@ services:
       - ums_network
 
   # ========================================================
-  # Backend: Go REST API & Asynq Background Worker
+  # Backend: Go REST API & River Background Worker
   # ========================================================
   backend:
     image: ghcr.io/nomarodnap/go_ums/backend:production
@@ -59,7 +59,6 @@ services:
       - PORT=8080
       - DATABASE_URL=${DATABASE_URL}
       - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
       - APP_URL=${APP_URL:-http://localhost}
@@ -72,21 +71,6 @@ services:
       - UPLOAD_DIR=/app/uploads
     volumes:
       - ums_uploads:/app/uploads
-    depends_on:
-      - redis
-    networks:
-      - ums_network
-
-  # ========================================================
-  # Redis: Asynq Queue & In-Memory Cache
-  # ========================================================
-  redis:
-    image: redis:7-alpine
-    container_name: ums_redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
     networks:
       - ums_network
 
@@ -111,8 +95,6 @@ services:
 volumes:
   ums_uploads:
     name: ums_uploads
-  redis_data:
-    name: ums_redis_data
   pgdata:
     name: ums_pgdata
 

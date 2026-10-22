@@ -23,6 +23,7 @@ import (
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
 	"github.com/dof/ums-backend/internal/handlers"
+	"github.com/dof/ums-backend/internal/realtime"
 	"github.com/dof/ums-backend/internal/storage"
 	"github.com/dof/ums-backend/internal/worker"
 )
@@ -53,9 +54,13 @@ func main() {
 		}
 	}
 
-	// 2. Connect to Redis
-	redisService := cache.NewRedisService(cfg.RedisURL)
-	defer func() { _ = redisService.Close() }()
+	// 2. Initialize HybridCache (L1: Otter In-Memory + L2: Postgres UNLOGGED TABLE)
+	hybridCache, err := cache.NewHybridCache(pool)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize hybrid cache: %v. Running in memory-only mode.", err)
+	} else {
+		defer func() { _ = hybridCache.Close() }()
+	}
 
 	// 3. Setup Chi Router
 	router := chi.NewMux()
@@ -73,8 +78,8 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	// Auth Middleware (Better Auth Session + Redis + fallback JWT)
-	router.Use(auth.AuthMiddleware(pool, redisService, cfg.JWTSecret))
+	// Auth Middleware (Better Auth Session via HybridCache + Postgres + fallback JWT)
+	router.Use(auth.AuthMiddleware(pool, hybridCache, cfg.JWTSecret))
 
 	// 3. Setup Huma v2 with OpenAPI 3.1
 	humaConfig := huma.DefaultConfig("ระบบรายงานค่าสาธารณูปโภค กรมประมง API", "2.0.0")
@@ -92,30 +97,31 @@ func main() {
 	// Initialize Email Service
 	emailService := email.NewEmailService(cfg)
 
-	// Initialize Asynq Background Task Queue (Redis) only if Redis is available
+	// 4. Initialize River Background Job Queue (PostgreSQL-backed)
 	var taskDistributor worker.TaskDistributor
-	if redisService != nil && redisService.Client != nil {
-		taskDistributor, err = worker.NewRedisTaskDistributor(cfg.RedisURL)
+	if pool != nil {
+		riverService, err := worker.NewRiverService(pool, emailService)
 		if err != nil {
-			log.Printf("[Asynq] Warning: Failed to initialize task distributor: %v", err)
+			log.Printf("[River] Warning: Failed to initialize river service: %v", err)
 		} else {
-			defer func() { _ = taskDistributor.Close() }()
-		}
+			taskDistributor = riverService
+			riverCtx, cancelRiver := context.WithCancel(context.Background())
+			defer cancelRiver()
 
-		taskProcessor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
-		if err != nil {
-			log.Printf("[Asynq] Warning: Failed to initialize task processor: %v", err)
-		} else {
 			go func() {
-				if err := taskProcessor.Start(); err != nil {
-					log.Printf("[Asynq Worker] Server stopped: %v", err)
+				if err := riverService.Start(riverCtx); err != nil {
+					log.Printf("[River Worker] Server stopped: %v", err)
 				}
 			}()
-			defer taskProcessor.Shutdown()
+			defer func() { _ = riverService.Stop(context.Background()) }()
 		}
-	} else {
-		log.Printf("[Asynq] Notice: Running without Redis task queue and background worker.")
 	}
+
+	// 5. Initialize Realtime Hub (PostgreSQL LISTEN / NOTIFY + Go SSE)
+	realtimeHub := realtime.NewHub(pool, cfg.DirectURL)
+	realtimeHub.Start(context.Background())
+	defer realtimeHub.Stop()
+	realtime.RegisterRoutes(router, realtimeHub)
 
 	// Initialize Storage Service (MinIO with local disk fallback)
 	storageService := storage.NewMinIOStorage(cfg)

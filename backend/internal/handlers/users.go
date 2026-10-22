@@ -163,7 +163,7 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 				hasPassword = true
 			}
 		} else {
-			// Send initial password setup email asynchronously via Asynq
+			// Send initial password setup email asynchronously via River queue
 			token := uuid.New().String()
 			verID := uuid.New().String()
 			expiresAt := time.Now().Add(24 * time.Hour)
@@ -297,7 +297,7 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		resetURL := fmt.Sprintf("%s/set-password?token=%s", cfg.AppURL, token)
 		if distributor != nil {
 			if err := distributor.DistributeTaskSendEmail(ctx, userEmail, name, resetURL); err != nil {
-				log.Printf("[Users] Failed to enqueue reset email via Asynq, fallback to sync: %v", err)
+				log.Printf("[Users] Failed to enqueue reset email via River, fallback to sync: %v", err)
 				_ = emailService.SendResetPasswordEmail(userEmail, name, resetURL)
 			}
 		} else {

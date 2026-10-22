@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	pgx "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
@@ -14,13 +18,28 @@ import (
 func main() {
 	cfg := config.LoadConfig()
 
-	log.Println("[Asynq Worker] Initializing standalone background worker service...")
+	log.Println("[River Worker] Initializing standalone background worker service...")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	connConfig, err := pgxpool.ParseConfig(cfg.DirectURL)
+	if err != nil {
+		log.Fatalf("[River Worker] ParseConfig failed: %v", err)
+	}
+	connConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	pool, err := pgxpool.NewWithConfig(ctx, connConfig)
+	if err != nil {
+		log.Fatalf("[River Worker] Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
 
 	emailService := email.NewEmailService(cfg)
 
-	processor, err := worker.NewRedisTaskProcessor(cfg.RedisURL, emailService)
+	riverService, err := worker.NewRiverService(pool, emailService)
 	if err != nil {
-		log.Fatalf("[Asynq Worker] Failed to initialize task processor: %v", err)
+		log.Fatalf("[River Worker] Failed to initialize river service: %v", err)
 	}
 
 	// Handle graceful shutdown
@@ -29,12 +48,12 @@ func main() {
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 		<-quit
 
-		log.Println("[Asynq Worker] Signal received, shutting down worker...")
-		processor.Shutdown()
+		log.Println("[River Worker] Signal received, shutting down worker...")
+		_ = riverService.Stop(context.Background())
 		os.Exit(0)
 	}()
 
-	if err := processor.Start(); err != nil {
-		log.Fatalf("[Asynq Worker] Error running worker server: %v", err)
+	if err := riverService.Start(ctx); err != nil {
+		log.Fatalf("[River Worker] Error running worker server: %v", err)
 	}
 }
