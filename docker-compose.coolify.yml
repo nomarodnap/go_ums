@@ -36,6 +36,7 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
       - BETTER_AUTH_URL=http://192.168.171.97:10000
       - BETTER_AUTH_SECRET=${JWT_SECRET}
+      - DATABASE_URL=${DATABASE_URL}
     volumes:
       # เก็บไฟล์เอกสาร/ใบเสร็จที่อัปโหลดไม่ให้หายเมื่อมีการอัปเดต Image ใหม่
       - ums_uploads:/app/public/uploads
