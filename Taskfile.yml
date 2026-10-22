@@ -75,21 +75,21 @@ tasks:
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" status
+      - goose -dir db/migrations postgres "${DIRECT_URL:-$DATABASE_URL}" status
 
   migrate:up:
     desc: รัน Migration ทั้งหมดเข้าสู่ฐานข้อมูล (Goose Up)
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" up
+      - goose -dir db/migrations postgres "${DIRECT_URL:-$DATABASE_URL}" up
 
   migrate:down:
     desc: Rollback Migration ย้อนกลับ 1 Step (Goose Down)
     dir: backend
     dotenv: ['.env', '../.env']
     cmds:
-      - goose -dir db/migrations postgres "$DATABASE_URL?default_query_exec_mode=simple_protocol" down
+      - goose -dir db/migrations postgres "${DIRECT_URL:-$DATABASE_URL}" down
 
   migrate:create:
     desc: สร้างไฟล์ Migration ใหม่ (เช่น task migrate:create -- add_new_column)

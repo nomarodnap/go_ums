@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port          string
 	DatabaseURL   string
+	DirectURL     string
 	RedisURL      string
 	JWTSecret     string
 	CORSOrigin    string
@@ -60,6 +61,11 @@ func LoadConfig() *Config {
 	if dbURL == "" {
 		log.Println("[Config] WARNING: DATABASE_URL not set, falling back to localhost:5432/new_ums")
 		dbURL = "postgres://postgres:postgres@localhost:5432/new_ums?sslmode=disable"
+	}
+
+	directURL := os.Getenv("DIRECT_URL")
+	if directURL == "" {
+		directURL = dbURL
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -117,6 +123,7 @@ func LoadConfig() *Config {
 	return &Config{
 		Port:          port,
 		DatabaseURL:   dbURL,
+		DirectURL:     directURL,
 		RedisURL:      redisURL,
 		JWTSecret:     jwtSecret,
 		CORSOrigin:    corsOrigin,

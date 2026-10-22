@@ -39,6 +39,7 @@ func main() {
 		log.Fatalf("Database ParseConfig failed: %v", err)
 	}
 	connConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	connConfig.ConnConfig.StatementCacheCapacity = 0
 
 	pool, err := pgxpool.NewWithConfig(ctx, connConfig)
 	if err != nil {

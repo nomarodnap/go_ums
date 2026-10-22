@@ -37,6 +37,7 @@ services:
       - BETTER_AUTH_URL=http://192.168.171.97:10000
       - BETTER_AUTH_SECRET=${JWT_SECRET}
       - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
     volumes:
       # เก็บไฟล์เอกสาร/ใบเสร็จที่อัปโหลดไม่ให้หายเมื่อมีการอัปเดต Image ใหม่
       - ums_uploads:/app/public/uploads
@@ -57,6 +58,7 @@ services:
     environment:
       - PORT=8080
       - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
