@@ -16,7 +16,13 @@ export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET || "super-secret-key-replace-me-in-production-1234567890",
   baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  trustedOrigins: ["http://localhost:3000", "http://localhost:3001", "https://ums.fisheries.go.th"],
+  trustedOrigins: [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://192.168.171.97:10000",
+    "http://192.168.171.97",
+    "https://ums.fisheries.go.th",
+  ],
   trustHost: true,
   emailAndPassword: {
     enabled: true,
@@ -44,7 +50,9 @@ export const auth = betterAuth({
         if (hash.includes(":")) {
           const [salt, key] = hash.split(":");
           if (!salt || !key) return false;
-          const targetKey = await new Promise<Buffer>((resolve, reject) => {
+
+          // Try custom r: 16, keylen: 64
+          const key16 = await new Promise<Buffer>((resolve, reject) => {
             crypto.scrypt(
               password.normalize("NFKC"),
               salt,
@@ -53,7 +61,33 @@ export const auth = betterAuth({
               (err, derived) => (err ? reject(err) : resolve(derived as Buffer))
             );
           });
-          return targetKey.toString("hex") === key;
+          if (key16.toString("hex") === key) return true;
+
+          // Try standard Better Auth r: 8, keylen: 64
+          const key8 = await new Promise<Buffer>((resolve, reject) => {
+            crypto.scrypt(
+              password.normalize("NFKC"),
+              salt,
+              64,
+              { N: 16384, r: 8, p: 1, maxmem: 128 * 16384 * 8 * 2 },
+              (err, derived) => (err ? reject(err) : resolve(derived as Buffer))
+            );
+          });
+          if (key8.toString("hex") === key) return true;
+
+          // Try standard Better Auth r: 8, keylen: 32
+          const key32 = await new Promise<Buffer>((resolve, reject) => {
+            crypto.scrypt(
+              password.normalize("NFKC"),
+              salt,
+              32,
+              { N: 16384, r: 8, p: 1, maxmem: 128 * 16384 * 8 * 2 },
+              (err, derived) => (err ? reject(err) : resolve(derived as Buffer))
+            );
+          });
+          if (key32.toString("hex") === key) return true;
+
+          return false;
         }
         return false;
       },

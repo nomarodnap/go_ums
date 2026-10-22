@@ -69,8 +69,18 @@ func CheckPasswordHash(password, storedHash string) bool {
 			normalized := norm.NFKC.String(password)
 			// Better Auth scrypt params: N=16384, r=16, p=1, keyLen=64
 			derived, err := scrypt.Key([]byte(normalized), []byte(salt), 16384, 16, 1, 64)
-			if err == nil {
-				return hex.EncodeToString(derived) == expectedKeyHex
+			if err == nil && hex.EncodeToString(derived) == expectedKeyHex {
+				return true
+			}
+			// Try standard r=8, keyLen=64
+			derived8, err8 := scrypt.Key([]byte(normalized), []byte(salt), 16384, 8, 1, 64)
+			if err8 == nil && hex.EncodeToString(derived8) == expectedKeyHex {
+				return true
+			}
+			// Try standard r=8, keyLen=32
+			derived32, err32 := scrypt.Key([]byte(normalized), []byte(salt), 16384, 8, 1, 32)
+			if err32 == nil && hex.EncodeToString(derived32) == expectedKeyHex {
+				return true
 			}
 		}
 	}

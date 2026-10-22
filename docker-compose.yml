@@ -34,6 +34,8 @@ services:
       # Internal URL สำหรับ Next.js Server Components / Actions ติดต่อ Go Backend ภายใน Docker
       - INTERNAL_API_URL=http://backend:8080
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - BETTER_AUTH_URL=http://192.168.171.97:10000
+      - BETTER_AUTH_SECRET=${JWT_SECRET}
     volumes:
       # เก็บไฟล์เอกสาร/ใบเสร็จที่อัปโหลดไม่ให้หายเมื่อมีการอัปเดต Image ใหม่
       - ums_uploads:/app/public/uploads
