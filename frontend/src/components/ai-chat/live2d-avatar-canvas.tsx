@@ -131,7 +131,7 @@ export const Live2DAvatarCanvas = React.memo(function Live2DAvatarCanvas({
         const { Live2DModel, Cubism4ExpressionManager, config } = await import(
           "pixi-live2d-display/cubism4"
         );
-        Live2DModel.registerTicker(PIXI.Ticker);
+        Live2DModel.registerTicker(PIXI.Ticker as any);
 
         // Safeguard ExpressionManager against aborted promises during unmount
         const proto = Cubism4ExpressionManager?.prototype as any;
