@@ -67,6 +67,12 @@ services:
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-ระบบรายงานค่าสาธารณูปโภค กรมประมง}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
       - UPLOAD_DIR=/app/uploads
+      - GARAGE_ENDPOINT=${GARAGE_ENDPOINT:-}
+      - GARAGE_ACCESS_KEY=${GARAGE_ACCESS_KEY:-}
+      - GARAGE_SECRET_KEY=${GARAGE_SECRET_KEY:-}
+      - GARAGE_REGION=${GARAGE_REGION:-garage}
+      - GARAGE_USE_SSL=${GARAGE_USE_SSL:-false}
+      - GARAGE_BUCKET=${GARAGE_BUCKET:-ums-uploads}
     volumes:
       - ums_uploads:/app/uploads
     networks:

@@ -16,18 +16,19 @@ import (
 func TestStorageLocalFallback(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := &config.Config{
-		MinioEndpoint: "invalid-minio-host:9999",
-		MinioBucket:   "test-bucket",
-		UploadDir:     tempDir,
+		GarageEndpoint: "http://invalid-garage-host:9999",
+		GarageBucket:   "test-bucket",
+		GarageRegion:   "garage",
+		UploadDir:      tempDir,
 	}
 
-	svc := storage.NewMinIOStorage(cfg)
+	svc := storage.NewGarageStorage(cfg)
 	if svc == nil {
 		t.Fatal("expected non-nil storage instance")
 	}
 
 	// 1. Test Upload via local fallback
-	content := "Hello MinIO and Local Fallback"
+	content := "Hello Garage S3 and Local Fallback"
 	reader := strings.NewReader(content)
 	filename := "test-doc.txt"
 
@@ -65,11 +66,10 @@ func TestStorageLocalFallback(t *testing.T) {
 
 	// 3. Test Delete
 	if err := svc.Delete(context.Background(), filename); err != nil {
-		t.Errorf("expected no error deleting, got: %v", err)
+		t.Fatalf("expected no error deleting file, got: %v", err)
 	}
 
-	// Verify deleted
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		t.Errorf("expected file to be deleted, but it still exists")
+		t.Errorf("expected file to be deleted from disk, but it still exists")
 	}
 }

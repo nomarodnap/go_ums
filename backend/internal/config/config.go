@@ -21,11 +21,12 @@ type Config struct {
 	SMTPPass      string
 	SMTPFromName  string
 	SMTPFromEmail string
-	MinioEndpoint  string
-	MinioAccessKey string
-	MinioSecretKey string
-	MinioUseSSL    bool
-	MinioBucket    string
+	GarageEndpoint  string
+	GarageAccessKey string
+	GarageSecretKey string
+	GarageRegion    string
+	GarageUseSSL    bool
+	GarageBucket    string
 	GeminiAPIKey       string
 	GeminiModel        string
 	LineMessagingToken string
@@ -95,26 +96,58 @@ func LoadConfig() *Config {
 		smtpPort = "587"
 	}
 
-	minioEndpoint := os.Getenv("MINIO_ENDPOINT")
-	if minioEndpoint == "" {
-		minioEndpoint = "localhost:9000"
+	garageEndpoint := os.Getenv("GARAGE_ENDPOINT")
+	if garageEndpoint == "" {
+		garageEndpoint = os.Getenv("S3_ENDPOINT")
+	}
+	if garageEndpoint == "" {
+		garageEndpoint = os.Getenv("MINIO_ENDPOINT")
+	}
+	if garageEndpoint == "" {
+		garageEndpoint = "localhost:3900"
 	}
 
-	minioAccessKey := os.Getenv("MINIO_ACCESS_KEY")
-	if minioAccessKey == "" {
-		minioAccessKey = "minioadmin"
+	garageAccessKey := os.Getenv("GARAGE_ACCESS_KEY")
+	if garageAccessKey == "" {
+		garageAccessKey = os.Getenv("S3_ACCESS_KEY")
+	}
+	if garageAccessKey == "" {
+		garageAccessKey = os.Getenv("MINIO_ACCESS_KEY")
+	}
+	if garageAccessKey == "" {
+		garageAccessKey = "ums-access-key"
 	}
 
-	minioSecretKey := os.Getenv("MINIO_SECRET_KEY")
-	if minioSecretKey == "" {
-		minioSecretKey = "minioadmin123"
+	garageSecretKey := os.Getenv("GARAGE_SECRET_KEY")
+	if garageSecretKey == "" {
+		garageSecretKey = os.Getenv("S3_SECRET_KEY")
+	}
+	if garageSecretKey == "" {
+		garageSecretKey = os.Getenv("MINIO_SECRET_KEY")
+	}
+	if garageSecretKey == "" {
+		garageSecretKey = "ums-secret-key"
 	}
 
-	minioUseSSL := os.Getenv("MINIO_USE_SSL") == "true"
+	garageRegion := os.Getenv("GARAGE_REGION")
+	if garageRegion == "" {
+		garageRegion = os.Getenv("S3_REGION")
+	}
+	if garageRegion == "" {
+		garageRegion = "garage"
+	}
 
-	minioBucket := os.Getenv("MINIO_BUCKET")
-	if minioBucket == "" {
-		minioBucket = "ums-uploads"
+	garageUseSSL := os.Getenv("GARAGE_USE_SSL") == "true" || os.Getenv("S3_USE_SSL") == "true" || os.Getenv("MINIO_USE_SSL") == "true"
+
+	garageBucket := os.Getenv("GARAGE_BUCKET")
+	if garageBucket == "" {
+		garageBucket = os.Getenv("S3_BUCKET")
+	}
+	if garageBucket == "" {
+		garageBucket = os.Getenv("MINIO_BUCKET")
+	}
+	if garageBucket == "" {
+		garageBucket = "ums-uploads"
 	}
 
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
@@ -142,11 +175,12 @@ func LoadConfig() *Config {
 		SMTPPass:       os.Getenv("SMTP_PASS"),
 		SMTPFromName:   os.Getenv("SMTP_FROM_NAME"),
 		SMTPFromEmail:  os.Getenv("SMTP_FROM_EMAIL"),
-		MinioEndpoint:  minioEndpoint,
-		MinioAccessKey: minioAccessKey,
-		MinioSecretKey: minioSecretKey,
-		MinioUseSSL:    minioUseSSL,
-		MinioBucket:    minioBucket,
+		GarageEndpoint:  garageEndpoint,
+		GarageAccessKey: garageAccessKey,
+		GarageSecretKey: garageSecretKey,
+		GarageRegion:    garageRegion,
+		GarageUseSSL:    garageUseSSL,
+		GarageBucket:    garageBucket,
 		GeminiAPIKey:       geminiAPIKey,
 		GeminiModel:        geminiModel,
 		LineMessagingToken: lineToken,

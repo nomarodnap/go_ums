@@ -138,8 +138,8 @@ func main() {
 	defer realtimeHub.Stop()
 	realtime.RegisterRoutes(router, realtimeHub)
 
-	// Initialize Storage Service (MinIO with local disk fallback)
-	storageService := storage.NewMinIOStorage(cfg)
+	// Initialize Storage Service (Garage S3 with local disk fallback)
+	storageService := storage.NewGarageStorage(cfg)
 	handlers.RegisterUploadRoutes(router, storageService)
 
 	// 4. Register Domain Handlers

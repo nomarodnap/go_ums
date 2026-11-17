@@ -86,7 +86,7 @@ func RegisterUploadRoutes(router chi.Router, storage storage.StorageService) {
 		})
 	})
 
-	// 2. Serve uploaded files (MinIO / fallback)
+	// 2. Serve uploaded files (Garage S3 / fallback)
 	router.Get("/uploads/{filename}", func(w http.ResponseWriter, r *http.Request) {
 		filename := chi.URLParam(r, "filename")
 		storage.ServeFile(w, r, filename)
