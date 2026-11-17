@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  garage:
+    image: dxflrs/garage:v1.1.0
+    container_name: ums_garage
+    restart: unless-stopped
+    ports:
+      - "3900:3900" # S3 API
+      - "3901:3901" # RPC
+      - "3902:3902" # S3 Web
+      - "3903:3903" # Admin API
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+      - ums_garage_meta:/var/lib/garage/meta
+      - ums_garage_data:/var/lib/garage/data
+
+volumes:
+  ums_garage_meta:
+    name: ums_garage_meta
+  ums_garage_data:
+    name: ums_garage_data

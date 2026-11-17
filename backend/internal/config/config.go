@@ -8,25 +8,25 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	DirectURL     string
-	JWTSecret     string
-	CORSOrigin    string
-	UploadDir     string
-	AppURL        string
-	SMTPHost      string
-	SMTPPort      string
-	SMTPUser      string
-	SMTPPass      string
-	SMTPFromName  string
-	SMTPFromEmail string
-	GarageEndpoint  string
-	GarageAccessKey string
-	GarageSecretKey string
-	GarageRegion    string
-	GarageUseSSL    bool
-	GarageBucket    string
+	Port               string
+	DatabaseURL        string
+	DirectURL          string
+	JWTSecret          string
+	CORSOrigin         string
+	UploadDir          string
+	AppURL             string
+	SMTPHost           string
+	SMTPPort           string
+	SMTPUser           string
+	SMTPPass           string
+	SMTPFromName       string
+	SMTPFromEmail      string
+	GarageEndpoint     string
+	GarageAccessKey    string
+	GarageSecretKey    string
+	GarageRegion       string
+	GarageUseSSL       bool
+	GarageBucket       string
 	GeminiAPIKey       string
 	GeminiModel        string
 	LineMessagingToken string
@@ -162,25 +162,25 @@ func LoadConfig() *Config {
 		port, geminiModel, geminiAPIKey != "", lineToken != "", lineSecret != "")
 
 	return &Config{
-		Port:           port,
-		DatabaseURL:    dbURL,
-		DirectURL:      directURL,
-		JWTSecret:      jwtSecret,
-		CORSOrigin:     corsOrigin,
-		UploadDir:      uploadDir,
-		AppURL:         appURL,
-		SMTPHost:       os.Getenv("SMTP_HOST"),
-		SMTPPort:       smtpPort,
-		SMTPUser:       os.Getenv("SMTP_USER"),
-		SMTPPass:       os.Getenv("SMTP_PASS"),
-		SMTPFromName:   os.Getenv("SMTP_FROM_NAME"),
-		SMTPFromEmail:  os.Getenv("SMTP_FROM_EMAIL"),
-		GarageEndpoint:  garageEndpoint,
-		GarageAccessKey: garageAccessKey,
-		GarageSecretKey: garageSecretKey,
-		GarageRegion:    garageRegion,
-		GarageUseSSL:    garageUseSSL,
-		GarageBucket:    garageBucket,
+		Port:               port,
+		DatabaseURL:        dbURL,
+		DirectURL:          directURL,
+		JWTSecret:          jwtSecret,
+		CORSOrigin:         corsOrigin,
+		UploadDir:          uploadDir,
+		AppURL:             appURL,
+		SMTPHost:           os.Getenv("SMTP_HOST"),
+		SMTPPort:           smtpPort,
+		SMTPUser:           os.Getenv("SMTP_USER"),
+		SMTPPass:           os.Getenv("SMTP_PASS"),
+		SMTPFromName:       os.Getenv("SMTP_FROM_NAME"),
+		SMTPFromEmail:      os.Getenv("SMTP_FROM_EMAIL"),
+		GarageEndpoint:     garageEndpoint,
+		GarageAccessKey:    garageAccessKey,
+		GarageSecretKey:    garageSecretKey,
+		GarageRegion:       garageRegion,
+		GarageUseSSL:       garageUseSSL,
+		GarageBucket:       garageBucket,
 		GeminiAPIKey:       geminiAPIKey,
 		GeminiModel:        geminiModel,
 		LineMessagingToken: lineToken,
