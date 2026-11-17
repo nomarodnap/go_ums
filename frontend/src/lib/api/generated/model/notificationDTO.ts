@@ -6,6 +6,9 @@
  */
 
 export interface NotificationDTO {
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  acknowledgedReason?: string;
   createdAt: string;
   departmentId?: string;
   departmentName?: string;

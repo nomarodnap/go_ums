@@ -1,8 +1,7 @@
 -- name: ListNotifications :many
 SELECT * FROM notifications
 WHERE (sqlc.narg('department_id')::text IS NULL OR department_id = sqlc.narg('department_id'))
-ORDER BY created_at DESC
-LIMIT 100;
+ORDER BY created_at DESC;
 
 -- name: CreateNotification :one
 INSERT INTO notifications (
@@ -15,7 +14,11 @@ RETURNING *;
 
 -- name: MarkNotificationRead :one
 UPDATE notifications
-SET is_read = true, updated_at = NOW()
+SET is_read = true,
+    acknowledged_reason = $2,
+    acknowledged_by = $3,
+    acknowledged_at = NOW(),
+    updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 

@@ -6,6 +6,7 @@ import {
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
   getListNotificationsQueryKey,
+  getGetNotificationCountsQueryKey,
 } from "@/lib/api/generated/notifications/notifications";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Info,
-  CheckCircle2,
   Clock,
   Building,
   Search,
@@ -58,7 +58,10 @@ export function NotificationList({
         queryClient.invalidateQueries({
           queryKey: getListNotificationsQueryKey(),
         });
-        toast.success("ทำเครื่องหมายว่าอ่านแล้ว");
+        queryClient.invalidateQueries({
+          queryKey: getGetNotificationCountsQueryKey(),
+        });
+        toast.success("บันทึกการรับทราบเรียบร้อยแล้ว");
       },
       onError: () => {
         toast.error("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
@@ -71,6 +74,9 @@ export function NotificationList({
       onSuccess: () => {
         queryClient.invalidateQueries({
           queryKey: getListNotificationsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetNotificationCountsQueryKey(),
         });
         toast.success("ทำเครื่องหมายว่าอ่านทั้งหมดแล้ว");
       },
@@ -157,7 +163,7 @@ export function NotificationList({
                   variant="destructive"
                   className="rounded-full px-2 py-0.5 text-xs font-bold shadow-xs"
                 >
-                  {unreadCount} ใหม่
+                  {unreadCount}
                 </Badge>
               )}
             </div>
@@ -181,52 +187,47 @@ export function NotificationList({
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="ค้นหาข้อความ, หัวข้อ, หรือชื่อหน่วยงาน..."
+            placeholder="ค้นหาข้อความ หรือหน่วยงาน..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-9.5 rounded-xl bg-card/70 border-black/[0.06] dark:border-white/[0.08] text-xs"
+            className="pl-9 h-9.5 text-xs rounded-xl bg-card/60 border-black/[0.08] dark:border-white/[0.12]"
           />
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.06] self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] self-start sm:self-auto">
           <Button
-            variant="ghost"
+            variant={filterStatus === "ALL" ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setFilterStatus("ALL")}
             className={cn(
-              "h-7.5 px-3 rounded-lg text-xs font-medium transition-all",
-              filterStatus === "ALL"
-                ? "bg-background text-foreground shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground",
+              "text-xs h-7.5 rounded-lg px-3 font-medium transition-all",
+              filterStatus === "ALL" && "shadow-xs bg-background",
             )}
           >
             ทั้งหมด ({notifications.length})
           </Button>
           <Button
-            variant="ghost"
+            variant={filterStatus === "UNREAD" ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setFilterStatus("UNREAD")}
             className={cn(
-              "h-7.5 px-3 rounded-lg text-xs font-medium transition-all",
-              filterStatus === "UNREAD"
-                ? "bg-background text-foreground shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground",
+              "text-xs h-7.5 rounded-lg px-3 font-medium transition-all",
+              filterStatus === "UNREAD" &&
+                "shadow-xs bg-background text-primary font-semibold",
             )}
           >
             ยังไม่ได้อ่าน ({unreadCount})
           </Button>
           <Button
-            variant="ghost"
+            variant={filterStatus === "READ" ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setFilterStatus("READ")}
             className={cn(
-              "h-7.5 px-3 rounded-lg text-xs font-medium transition-all",
-              filterStatus === "READ"
-                ? "bg-background text-foreground shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground",
+              "text-xs h-7.5 rounded-lg px-3 font-medium transition-all",
+              filterStatus === "READ" && "shadow-xs bg-background",
             )}
           >
             อ่านแล้ว ({notifications.length - unreadCount})
@@ -234,14 +235,14 @@ export function NotificationList({
         </div>
       </div>
 
-      {/* Notification Cards List */}
+      {/* Notifications List */}
       {filteredNotifications.length === 0 ? (
-        <Card className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-xs">
-          <CardContent className="flex flex-col items-center justify-center h-64 text-center p-6">
-            <div className="rounded-full bg-black/[0.04] dark:bg-white/[0.04] p-4 mb-3">
-              <CheckCircle2 className="size-8 text-muted-foreground/60" />
+        <Card className="rounded-2xl border-dashed border-2 border-black/[0.08] dark:border-white/[0.12] bg-transparent">
+          <CardContent className="flex flex-col items-center justify-center p-12 text-center">
+            <div className="size-12 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center mb-3 text-muted-foreground">
+              <Bell className="size-6 opacity-40" />
             </div>
-            <h3 className="text-base font-semibold text-foreground">
+            <h3 className="text-sm font-semibold text-foreground">
               ไม่พบรายการแจ้งเตือน
             </h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">
@@ -253,98 +254,119 @@ export function NotificationList({
         </Card>
       ) : (
         <div className="grid gap-3">
-          {filteredNotifications.map((notif) => (
-            <Card
-              key={notif.id}
-              className={cn(
-                "rounded-2xl transition-all duration-150 border shadow-xs overflow-hidden",
-                !notif.isRead
-                  ? "border-primary/30 bg-primary/[0.02] dark:bg-primary/[0.04] shadow-xs hover:border-primary/50"
-                  : "border-black/[0.06] dark:border-white/[0.08] bg-card/60 opacity-80 hover:opacity-100",
-              )}
-            >
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex gap-3.5 items-start">
-                  <div className="mt-0.5">{getSeverityIcon(notif.severity)}</div>
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4
-                          className={cn(
-                            "text-sm font-semibold tracking-tight",
-                            !notif.isRead
-                              ? "text-foreground"
-                              : "text-muted-foreground font-medium",
-                          )}
-                        >
-                          {notif.title}
-                        </h4>
-                        {getSeverityBadge(notif.severity)}
-                        {showDepartmentBadge && notif.departmentName && (
-                          <Badge
-                            variant="outline"
-                            className="text-[11px] font-normal text-muted-foreground bg-black/[0.02] dark:bg-white/[0.04] flex items-center gap-1 border-black/[0.08] dark:border-white/[0.12]"
+          {filteredNotifications.map((notif) => {
+            const isAnomalyEdited = notif.type === "MANUAL_ANOMALY_EDITED";
+            const canAcknowledge =
+              !notif.isRead && (showAcknowledgeButton || isAnomalyEdited);
+
+            return (
+              <Card
+                key={notif.id}
+                className={cn(
+                  "rounded-2xl transition-all duration-150 border shadow-xs overflow-hidden",
+                  !notif.isRead
+                    ? "border-primary/30 bg-primary/[0.02] dark:bg-primary/[0.04] shadow-xs hover:border-primary/50"
+                    : "border-black/[0.06] dark:border-white/[0.08] bg-card/60 opacity-80 hover:opacity-100",
+                )}
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex gap-3.5 items-start">
+                    <div className="mt-0.5">{getSeverityIcon(notif.severity)}</div>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4
+                            className={cn(
+                              "text-sm font-semibold tracking-tight",
+                              !notif.isRead
+                                ? "text-foreground"
+                                : "text-muted-foreground font-medium",
+                            )}
                           >
-                            <Building className="size-3 text-primary/70" />
-                            <span className="truncate max-w-[200px]">
-                              {notif.departmentName}
-                            </span>
-                          </Badge>
-                        )}
-                        {!notif.isRead && (
-                          <span className="flex size-2 rounded-full bg-primary animate-pulse" />
-                        )}
+                            {notif.title}
+                          </h4>
+                          {getSeverityBadge(notif.severity)}
+                          {showDepartmentBadge && notif.departmentName && (
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] font-normal text-muted-foreground bg-black/[0.02] dark:bg-white/[0.04] flex items-center gap-1 border-black/[0.08] dark:border-white/[0.12]"
+                            >
+                              <Building className="size-3 text-primary/70" />
+                              <span className="truncate max-w-[200px]">
+                                {notif.departmentName}
+                              </span>
+                            </Badge>
+                          )}
+                          {!notif.isRead ? (
+                            <span className="flex size-2 rounded-full bg-primary animate-pulse" />
+                          ) : isAnomalyEdited ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10 font-medium"
+                            >
+                              รับทราบแล้ว{notif.acknowledgedBy ? ` โดย ${notif.acknowledgedBy}` : ""}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-muted-foreground border-black/10 dark:border-white/10"
+                            >
+                              อ่านแล้ว
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center text-[11px] text-muted-foreground whitespace-nowrap">
+                          <Clock className="mr-1 size-3" />
+                          {notif.createdAt
+                            ? format(
+                                new Date(notif.createdAt),
+                                "d MMM yyyy HH:mm น.",
+                                { locale: th },
+                              )
+                            : "-"}
+                        </div>
                       </div>
-                      <div className="flex items-center text-[11px] text-muted-foreground whitespace-nowrap">
-                        <Clock className="mr-1 size-3" />
-                        {notif.createdAt
-                          ? format(
-                              new Date(notif.createdAt),
-                              "d MMM yyyy HH:mm น.",
-                              { locale: th },
-                            )
-                          : "-"}
-                      </div>
-                    </div>
-                    <p
-                      className={cn(
-                        "text-xs leading-relaxed",
-                        !notif.isRead
-                          ? "text-foreground/90"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {notif.message}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0 flex flex-col gap-1.5 items-end pl-2">
-                    {notif.link && (
-                      <Link href={notif.link}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs h-7.5 rounded-lg px-2.5 font-medium"
-                        >
-                          ดูรายละเอียด
-                        </Button>
-                      </Link>
-                    )}
-                    {showAcknowledgeButton && !notif.isRead && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleMarkAsRead(notif.id)}
-                        disabled={markReadMutation.isPending}
-                        className="text-xs h-7.5 rounded-lg px-2.5 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+                      <p
+                        className={cn(
+                          "text-xs leading-relaxed",
+                          !notif.isRead
+                            ? "text-foreground/90"
+                            : "text-muted-foreground",
+                        )}
                       >
-                        รับทราบ
-                      </Button>
-                    )}
+                        {notif.message}
+                      </p>
+                    </div>
+
+                    <div className="flex-shrink-0 flex flex-col gap-1.5 items-end pl-2">
+                      {notif.link && (
+                        <Link href={notif.link}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7.5 rounded-lg px-2.5 font-medium"
+                          >
+                            ดูรายละเอียด
+                          </Button>
+                        </Link>
+                      )}
+                      {canAcknowledge && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleMarkAsRead(notif.id)}
+                          disabled={markReadMutation.isPending}
+                          className="text-xs h-7.5 rounded-lg px-2.5 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
+                        >
+                          รับทราบ
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

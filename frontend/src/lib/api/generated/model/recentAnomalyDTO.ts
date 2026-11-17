@@ -6,16 +6,41 @@
  */
 
 export interface RecentAnomalyDTO {
+  attachmentInvoice?: string;
+  attachmentReceipt?: string;
+  auditStatus?: string;
+  billCode?: string;
   billingMonth: number;
   billingYear: number;
-  departmentName: string;
+  departmentId: string;
+  departmentName?: string;
+  departmentShortName?: string;
+  depositUnitName?: string;
+  docType?: string;
   id: string;
-  invoiceAmount: number;
-  isDisbursementOver2Months: boolean;
-  isLatePayment: boolean;
-  isLateReceive: boolean;
-  isManualAnomaly: boolean;
-  isOverdueMoreThan2Months: boolean;
-  manualAnomalyReason: string;
+  invoiceAmount?: number;
+  invoiceNumber?: string;
+  invoiceStatus: string;
+  isAnomalyExpense?: boolean;
+  isDisbursementOver2Months?: boolean;
+  isDuplicate?: boolean;
+  isLatePayment?: boolean;
+  isLateReceive?: boolean;
+  isManualAnomaly?: boolean;
+  isOverdueMoreThan2Months?: boolean;
+  isPendingBillOnly: boolean;
+  isPhoneOverLimit?: boolean;
+  isPhoneUsageOverLimit?: boolean;
+  isReviewed?: boolean;
+  isWrongBudget?: boolean;
+  isWrongMonth?: boolean;
+  manualAnomalyDetail?: string;
+  manualAnomalyReason?: string;
+  paidAmount?: number;
+  paymentDocNumber?: string;
+  paymentStatus: string;
+  provider?: string;
+  serviceNumber?: string;
+  usageAmount?: number;
   utilityType: string;
 }

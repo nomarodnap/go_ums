@@ -28,6 +28,32 @@ type AuditFlags struct {
 	IsAnomalyExpense          bool
 }
 
+type StatisticalAnomalyResult struct {
+	IsAnomaly           bool    `json:"isAnomaly"`
+	Method              string  `json:"method"` // ZSCORE_IQR, ZSCORE, IQR, FLAT_30_PCT, FALLBACK_30_PCT, NONE
+	SampleCount         int     `json:"sampleCount"`
+	CurrentAmount       float64 `json:"currentAmount"`
+	Mean                float64 `json:"mean"`
+	StdDev              float64 `json:"stdDev"`
+	Median              float64 `json:"median"`
+	Q1                  float64 `json:"q1"`
+	Q3                  float64 `json:"q3"`
+	IQR                 float64 `json:"iqr"`
+	LowerFence          float64 `json:"lowerFence"`
+	UpperFence          float64 `json:"upperFence"`
+	ZScore              float64 `json:"zScore"`
+	PctDiffFromBaseline float64 `json:"pctDiffFromBaseline"`
+}
+
+type BillHistoricalSample struct {
+	BillID        string  `json:"billId"`
+	BillCode      *string `json:"billCode,omitempty"`
+	BillingMonth  int     `json:"billingMonth"`
+	BillingYear   int     `json:"billingYear"`
+	ServiceNumber *string `json:"serviceNumber,omitempty"`
+	Amount        float64 `json:"amount"`
+}
+
 type BillAuditInput struct {
 	UtilityType             string
 	BillingMonth            int
@@ -40,7 +66,290 @@ type BillAuditInput struct {
 	PaymentStatus           string
 	PhoneReimbursementLimit *int
 	HistoricalAvgAmount     float64
+	HistoricalAmounts       []float64
 	HasDuplicateBill        bool
+}
+
+func percentileSorted(sorted []float64, p float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n == 1 {
+		return sorted[0]
+	}
+	pos := p * float64(n-1)
+	lo := int(math.Floor(pos))
+	hi := int(math.Ceil(pos))
+	if lo == hi {
+		return sorted[lo]
+	}
+	frac := pos - float64(lo)
+	return sorted[lo] + frac*(sorted[hi]-sorted[lo])
+}
+
+// DetectStatisticalAnomaly evaluates whether current expense is anomalous against historical bills.
+// Hybrid strategy:
+// - When >= 4 valid historical periods exist: uses sample Z-score (|z| >= 2.0) and IQR fences ([Q1 - 1.5*IQR, Q3 + 1.5*IQR]),
+//   guarded by practical deviation (>= 15% from median/mean AND >= 50 THB) or >30% when variance is flat.
+// - When 1-3 valid historical periods exist: falls back to >30% deviation from the historical mean.
+func DetectStatisticalAnomaly(current float64, history []float64) StatisticalAnomalyResult {
+	res := StatisticalAnomalyResult{
+		Method:        "NONE",
+		CurrentAmount: current,
+	}
+	if current <= 0 || math.IsNaN(current) || math.IsInf(current, 0) {
+		return res
+	}
+
+	valid := make([]float64, 0, len(history))
+	for _, v := range history {
+		if v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) {
+			valid = append(valid, v)
+		}
+	}
+	n := len(valid)
+	res.SampleCount = n
+	if n == 0 {
+		return res
+	}
+
+	var sum float64
+	for _, v := range valid {
+		sum += v
+	}
+	mean := sum / float64(n)
+	res.Mean = math.Round(mean*100) / 100
+
+	sorted := append([]float64(nil), valid...)
+	sort.Float64s(sorted)
+	median := percentileSorted(sorted, 0.50)
+	q1 := percentileSorted(sorted, 0.25)
+	q3 := percentileSorted(sorted, 0.75)
+	iqr := q3 - q1
+
+	res.Median = math.Round(median*100) / 100
+	res.Q1 = math.Round(q1*100) / 100
+	res.Q3 = math.Round(q3*100) / 100
+	res.IQR = math.Round(iqr*100) / 100
+	res.LowerFence = math.Round(math.Max(0, q1-1.5*iqr)*100) / 100
+	res.UpperFence = math.Round((q3+1.5*iqr)*100) / 100
+
+	var stdDev float64
+	if n >= 2 {
+		var sqSum float64
+		for _, v := range valid {
+			d := v - mean
+			sqSum += d * d
+		}
+		stdDev = math.Sqrt(sqSum / float64(n-1))
+		res.StdDev = math.Round(stdDev*100) / 100
+		if stdDev > 1e-6 {
+			res.ZScore = math.Round(((current-mean)/stdDev)*100) / 100
+		}
+	}
+
+	baseline := median
+	if baseline <= 0 {
+		baseline = mean
+	}
+	absDiff := math.Abs(current - baseline)
+	var pctFromBaseline float64
+	if baseline > 0 {
+		pctFromBaseline = (current - baseline) / baseline
+		res.PctDiffFromBaseline = math.Round(pctFromBaseline*1000) / 10 // percentage points e.g. 32.5
+	}
+
+	// Sparse history fallback (< 4 prior periods): compare vs historical mean with >30% rule
+	if n < 4 {
+		pctFromMean := math.Abs(current-mean) / mean
+		if mean > 0 {
+			res.PctDiffFromBaseline = math.Round(((current-mean)/mean)*1000) / 10
+		}
+		if pctFromMean > 0.30 {
+			res.IsAnomaly = true
+			res.Method = "FALLBACK_30_PCT"
+		}
+		return res
+	}
+
+	// Statistical model (n >= 4): require practical significance guard to avoid tiny-variance false positives
+	pctAbs := math.Abs(pctFromBaseline)
+	if stdDev <= 1e-6 && iqr <= 1e-6 {
+		if mean > 0 && math.Abs(current-mean)/mean > 0.30 {
+			res.IsAnomaly = true
+			res.Method = "FLAT_30_PCT"
+		}
+		return res
+	}
+
+	if absDiff < 50.0 || pctAbs < 0.15 {
+		return res
+	}
+
+	rawZ := 0.0
+	if stdDev > 1e-6 {
+		rawZ = math.Abs((current - mean) / stdDev)
+	}
+	zHit := stdDev > 1e-6 && rawZ >= 2.0
+	iqrHit := iqr > 1e-6 && (current > q3+1.5*iqr || current < q1-1.5*iqr)
+
+	switch {
+	case zHit && iqrHit:
+		res.IsAnomaly = true
+		res.Method = "ZSCORE_IQR"
+	case zHit:
+		res.IsAnomaly = true
+		res.Method = "ZSCORE"
+	case iqrHit:
+		res.IsAnomaly = true
+		res.Method = "IQR"
+	}
+
+	return res
+}
+
+func splitServiceNumberTokens(raw *string) []string {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil
+	}
+	parts := strings.Split(*raw, ",")
+	tokens := make([]string, 0, len(parts))
+	for _, s := range parts {
+		if t := strings.TrimSpace(s); t != "" {
+			tokens = append(tokens, t)
+		}
+	}
+	return tokens
+}
+
+func hasOverlappingServiceToken(candidate *string, targetTokens []string) bool {
+	if len(targetTokens) == 0 {
+		return true
+	}
+	candTokens := splitServiceNumberTokens(candidate)
+	for _, ct := range candTokens {
+		for _, tt := range targetTokens {
+			if strings.EqualFold(ct, tt) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ComputeBillStatisticalAnomaly fetches up to 12 prior historical bills for the same department,
+// utility type, and overlapping service number and computes Z-score/IQR/fallback anomaly statistics.
+func ComputeBillStatisticalAnomaly(ctx context.Context, pool *pgxpool.Pool, billID string) (StatisticalAnomalyResult, []BillHistoricalSample, error) {
+	var (
+		deptID        string
+		utilType      string
+		billingMonth  int
+		billingYear   int
+		serviceNumber *string
+		invoiceAmount *float64
+		paidAmount    *float64
+	)
+	err := pool.QueryRow(ctx, `
+		SELECT department_id, utility_type, billing_month, billing_year, service_number, invoice_amount, paid_amount
+		FROM utility_bills
+		WHERE id = $1
+	`, billID).Scan(&deptID, &utilType, &billingMonth, &billingYear, &serviceNumber, &invoiceAmount, &paidAmount)
+	if err != nil {
+		return StatisticalAnomalyResult{Method: "NONE"}, nil, err
+	}
+
+	currentAmt := 0.0
+	if invoiceAmount != nil && *invoiceAmount > 0 {
+		currentAmt = *invoiceAmount
+	} else if paidAmount != nil && *paidAmount > 0 {
+		currentAmt = *paidAmount
+	}
+
+	return computeStatisticalAnomalyForBill(ctx, pool, billID, deptID, utilType, billingMonth, billingYear, serviceNumber, currentAmt)
+}
+
+func computeStatisticalAnomalyForBill(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	billID, deptID, utilType string,
+	billingMonth, billingYear int,
+	serviceNumber *string,
+	currentBillAmount float64,
+) (StatisticalAnomalyResult, []BillHistoricalSample, error) {
+	if pool == nil || currentBillAmount <= 0 || billingMonth <= 0 || billingYear <= 0 {
+		return StatisticalAnomalyResult{Method: "NONE", CurrentAmount: currentBillAmount}, nil, nil
+	}
+
+	yearCE := billingYear
+	if yearCE > 2400 {
+		yearCE -= 543
+	}
+	currentYM := yearCE*12 + billingMonth
+
+	rows, err := pool.Query(ctx, `
+		SELECT id, bill_code, billing_month, billing_year, service_number, invoice_amount, paid_amount
+		FROM utility_bills
+		WHERE department_id = $1
+		  AND utility_type = $2
+		  AND id <> $3
+		  AND (CASE WHEN billing_year > 2400 THEN billing_year - 543 ELSE billing_year END) * 12 + billing_month < $4
+		ORDER BY (CASE WHEN billing_year > 2400 THEN billing_year - 543 ELSE billing_year END) DESC,
+		         billing_month DESC,
+		         created_at DESC
+		LIMIT 36
+	`, deptID, utilType, billID, currentYM)
+	if err != nil {
+		return StatisticalAnomalyResult{Method: "NONE", CurrentAmount: currentBillAmount}, nil, err
+	}
+	defer rows.Close()
+
+	targetTokens := splitServiceNumberTokens(serviceNumber)
+	samples := make([]BillHistoricalSample, 0, 12)
+	historyAmounts := make([]float64, 0, 12)
+
+	for rows.Next() {
+		var (
+			id, billCode, srvNum *string
+			m, y                 int
+			invAmt, pAmt         *float64
+		)
+		if scanErr := rows.Scan(&id, &billCode, &m, &y, &srvNum, &invAmt, &pAmt); scanErr != nil {
+			continue
+		}
+		if len(targetTokens) > 0 && !hasOverlappingServiceToken(srvNum, targetTokens) {
+			continue
+		}
+		amt := 0.0
+		if invAmt != nil && *invAmt > 0 {
+			amt = *invAmt
+		} else if pAmt != nil && *pAmt > 0 {
+			amt = *pAmt
+		}
+		if amt <= 0 {
+			continue
+		}
+
+		sampleID := ""
+		if id != nil {
+			sampleID = *id
+		}
+		samples = append(samples, BillHistoricalSample{
+			BillID:        sampleID,
+			BillCode:      billCode,
+			BillingMonth:  m,
+			BillingYear:   y,
+			ServiceNumber: srvNum,
+			Amount:        amt,
+		})
+		historyAmounts = append(historyAmounts, amt)
+		if len(historyAmounts) >= 12 {
+			break
+		}
+	}
+
+	res := DetectStatisticalAnomaly(currentBillAmount, historyAmounts)
+	return res, samples, nil
 }
 
 // EvaluateBillAudits evaluates all 10 audit rules for a utility bill in memory
@@ -96,8 +405,12 @@ func EvaluateBillAudits(input BillAuditInput) AuditFlags {
 		flags.IsDuplicate = true
 	}
 
-	// 8. Expense Anomaly: Amount deviates > 30% compared to historical average (if history exists)
-	if input.HistoricalAvgAmount > 0 {
+	// 8. Expense Anomaly: Hybrid Statistical Z-score/IQR when history >= 4, else fallback > 30%
+	if len(input.HistoricalAmounts) > 0 {
+		if stat := DetectStatisticalAnomaly(input.InvoiceAmount, input.HistoricalAmounts); stat.IsAnomaly {
+			flags.IsAnomalyExpense = true
+		}
+	} else if input.HistoricalAvgAmount > 0 {
 		diff := input.InvoiceAmount - input.HistoricalAvgAmount
 		if diff < 0 {
 			diff = -diff
@@ -415,7 +728,7 @@ func RunAuditChecks(ctx context.Context, pool *pgxpool.Pool, billID string, curr
 		}
 	}
 
-	// 8. ค่าใช้จ่ายสูงผิดปกติ (> 30% เทียบกับรอบบิลเดือนก่อนหน้าของหมายเลขบริการ/หน่วยงานเดียวกัน)
+	// 8. ค่าใช้จ่ายสูง/ต่ำผิดปกติ (Hybrid: ใช้ Z-score / IQR เมื่อมีย้อนหลัง >= 4 รอบบิล และ fallback > 30% เมื่อข้อมูลน้อย)
 	currentBillAmount := 0.0
 	if b.invoiceAmount != nil && *b.invoiceAmount > 0 {
 		currentBillAmount = *b.invoiceAmount
@@ -424,81 +737,11 @@ func RunAuditChecks(ctx context.Context, pool *pgxpool.Pool, billID string, curr
 	}
 
 	if currentBillAmount > 0 && b.billingMonth > 0 && b.billingYear > 0 {
-		prevMonth := b.billingMonth - 1
-		prevYear := b.billingYear
-		if b.billingMonth == 1 {
-			prevMonth = 12
-			prevYear = b.billingYear - 1
-		}
-
-		rows, err := pool.Query(ctx, `
-			SELECT service_number, invoice_amount, paid_amount
-			FROM utility_bills
-			WHERE department_id = $1 AND utility_type = $2 AND billing_month = $3 AND billing_year = $4
-		`, b.departmentID, b.utilityType, prevMonth, prevYear)
-		if err == nil {
-			type prevItem struct {
-				serviceNumber *string
-				invoiceAmount *float64
-				paidAmount    *float64
-			}
-			var prevBills []prevItem
-			for rows.Next() {
-				var p prevItem
-				if err := rows.Scan(&p.serviceNumber, &p.invoiceAmount, &p.paidAmount); err == nil {
-					prevBills = append(prevBills, p)
-				}
-			}
-			rows.Close()
-
-			prevAmount := 0.0
-			if b.serviceNumber != nil && strings.TrimSpace(*b.serviceNumber) != "" {
-				currentNumbers := make([]string, 0)
-				for _, s := range strings.Split(*b.serviceNumber, ",") {
-					t := strings.TrimSpace(s)
-					if t != "" {
-						currentNumbers = append(currentNumbers, t)
-					}
-				}
-
-				for _, pb := range prevBills {
-					if pb.serviceNumber == nil {
-						continue
-					}
-					pbNums := strings.Split(*pb.serviceNumber, ",")
-					matched := false
-					for _, pbn := range pbNums {
-						t := strings.TrimSpace(pbn)
-						for _, cn := range currentNumbers {
-							if t == cn {
-								matched = true
-								break
-							}
-						}
-						if matched {
-							break
-						}
-					}
-					if matched {
-						if pb.invoiceAmount != nil && *pb.invoiceAmount > 0 {
-							prevAmount = *pb.invoiceAmount
-						} else if pb.paidAmount != nil && *pb.paidAmount > 0 {
-							prevAmount = *pb.paidAmount
-						}
-						break
-					}
-				}
-			} else if len(prevBills) > 0 {
-				if prevBills[0].invoiceAmount != nil && *prevBills[0].invoiceAmount > 0 {
-					prevAmount = *prevBills[0].invoiceAmount
-				} else if prevBills[0].paidAmount != nil && *prevBills[0].paidAmount > 0 {
-					prevAmount = *prevBills[0].paidAmount
-				}
-			}
-
-			if prevAmount > 0 && currentBillAmount > prevAmount*1.3 {
-				isAnomalyExpense = true
-			}
+		if stat, _, statErr := computeStatisticalAnomalyForBill(
+			ctx, pool, b.id, b.departmentID, b.utilityType,
+			b.billingMonth, b.billingYear, b.serviceNumber, currentBillAmount,
+		); statErr == nil && stat.IsAnomaly {
+			isAnomalyExpense = true
 		}
 	}
 
@@ -506,13 +749,14 @@ func RunAuditChecks(ctx context.Context, pool *pgxpool.Pool, billID string, curr
 	var existingAuditID string
 	var isManualAnomaly bool
 	var manualAnomalyReason *string
+	var existingStatus string
 
 	err = pool.QueryRow(ctx, `
-		SELECT id, is_manual_anomaly, manual_anomaly_reason
+		SELECT id, is_manual_anomaly, manual_anomaly_reason, status
 		FROM audits
 		WHERE utility_bill_id = $1
 		LIMIT 1
-	`, b.id).Scan(&existingAuditID, &isManualAnomaly, &manualAnomalyReason)
+	`, b.id).Scan(&existingAuditID, &isManualAnomaly, &manualAnomalyReason, &existingStatus)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
@@ -531,6 +775,10 @@ func RunAuditChecks(ctx context.Context, pool *pgxpool.Pool, billID string, curr
 
 	if hasIssues {
 		if existingAuditID != "" {
+			targetStatus := "PENDING_CORRECTION"
+			if existingStatus == "PENDING_RECHECK" {
+				targetStatus = "PENDING_RECHECK"
+			}
 			_, err = pool.Exec(ctx, `
 				UPDATE audits SET
 					is_late_receive = $1,
@@ -543,12 +791,12 @@ func RunAuditChecks(ctx context.Context, pool *pgxpool.Pool, billID string, curr
 					is_wrong_budget = $8,
 					is_duplicate = $9,
 					is_anomaly_expense = $10,
-					status = 'PENDING_CORRECTION',
+					status = $11,
 					updated_at = NOW()
-				WHERE id = $11
+				WHERE id = $12
 			`, isLateReceive, isLatePayment, isOverdueMoreThan2Months, isDisbursementOver2Months,
 				isWrongMonth, isPhoneOverLimit, isPhoneUsageOverLimit, isWrongBudget,
-				isDuplicate, isAnomalyExpense, existingAuditID)
+				isDuplicate, isAnomalyExpense, targetStatus, existingAuditID)
 		} else {
 			newID := uuid.New().String()
 			auditor := "SYSTEM"

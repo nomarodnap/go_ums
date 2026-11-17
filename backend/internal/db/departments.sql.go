@@ -82,12 +82,12 @@ func (q *Queries) CreateDepartment(ctx context.Context, arg CreateDepartmentPara
 const createDepartmentService = `-- name: CreateDepartmentService :one
 INSERT INTO department_services (
     id, department_id, utility_type, provider, service_number,
-    location_type, phone_owner_name, phone_owner_position,
+    location_type, phone_owner_name, phone_owner_position, phone_owner_division,
     phone_reimbursement_limit, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()
 )
-RETURNING id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at
+RETURNING id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at, is_active, phone_owner_division
 `
 
 type CreateDepartmentServiceParams struct {
@@ -99,6 +99,7 @@ type CreateDepartmentServiceParams struct {
 	LocationType            pgtype.Text `json:"location_type"`
 	PhoneOwnerName          pgtype.Text `json:"phone_owner_name"`
 	PhoneOwnerPosition      pgtype.Text `json:"phone_owner_position"`
+	PhoneOwnerDivision      pgtype.Text `json:"phone_owner_division"`
 	PhoneReimbursementLimit pgtype.Int4 `json:"phone_reimbursement_limit"`
 }
 
@@ -112,6 +113,7 @@ func (q *Queries) CreateDepartmentService(ctx context.Context, arg CreateDepartm
 		arg.LocationType,
 		arg.PhoneOwnerName,
 		arg.PhoneOwnerPosition,
+		arg.PhoneOwnerDivision,
 		arg.PhoneReimbursementLimit,
 	)
 	var i DepartmentService
@@ -127,6 +129,8 @@ func (q *Queries) CreateDepartmentService(ctx context.Context, arg CreateDepartm
 		&i.PhoneReimbursementLimit,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsActive,
+		&i.PhoneOwnerDivision,
 	)
 	return i, err
 }
@@ -181,7 +185,7 @@ func (q *Queries) GetDepartmentByID(ctx context.Context, id string) (Department,
 }
 
 const listAllDepartmentServices = `-- name: ListAllDepartmentServices :many
-SELECT id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at FROM department_services
+SELECT id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at, is_active, phone_owner_division FROM department_services
 ORDER BY department_id, utility_type ASC
 `
 
@@ -206,6 +210,8 @@ func (q *Queries) ListAllDepartmentServices(ctx context.Context) ([]DepartmentSe
 			&i.PhoneReimbursementLimit,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsActive,
+			&i.PhoneOwnerDivision,
 		); err != nil {
 			return nil, err
 		}
@@ -218,7 +224,7 @@ func (q *Queries) ListAllDepartmentServices(ctx context.Context) ([]DepartmentSe
 }
 
 const listDepartmentServices = `-- name: ListDepartmentServices :many
-SELECT id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at FROM department_services
+SELECT id, department_id, utility_type, provider, service_number, location_type, phone_owner_name, phone_owner_position, phone_reimbursement_limit, created_at, updated_at, is_active, phone_owner_division FROM department_services
 WHERE department_id = $1
 ORDER BY utility_type, service_number ASC
 `
@@ -245,6 +251,8 @@ func (q *Queries) ListDepartmentServices(ctx context.Context, departmentID strin
 			&i.PhoneReimbursementLimit,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsActive,
+			&i.PhoneOwnerDivision,
 		); err != nil {
 			return nil, err
 		}

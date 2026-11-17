@@ -7,6 +7,29 @@ const backendUrl =
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: {
+    proxyTimeout: 90_000,
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.line-scdn.net",
+      },
+      {
+        protocol: "https",
+        hostname: "profile.line-scdn.net",
+      },
+    ],
+  },
   async rewrites() {
     return {
       beforeFiles: [

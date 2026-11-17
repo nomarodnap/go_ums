@@ -21,6 +21,7 @@ export interface DashboardSummaryOutputBody {
   monthlyTrends: DashboardSummaryOutputBodyMonthlyTrends;
   paidAmount: number;
   pendingAmount: number;
+  period: string;
   recentAnomalies: DashboardSummaryOutputBodyRecentAnomalies;
   scope: string;
   statusData: DashboardSummaryOutputBodyStatusData;

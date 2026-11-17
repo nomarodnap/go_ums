@@ -32,6 +32,8 @@ import type {
   ListDepartmentServices200,
   ListDepartmentServicesParams,
   ListDepartments200,
+  ToggleDepartmentServiceStatusRequest,
+  ToggleDepartmentStatusRequest,
   UpdateDepartmentInputBody,
   UpdateDepartmentServiceInputBody
 } from '.././model';
@@ -509,7 +511,72 @@ export const useUpdateDepartmentService = <TError = ErrorModel,
       return useMutation(mutationOptions, queryClient);
     }
     /**
- * @summary Delete a department
+ * @summary Toggle active status of a department service (ระงับการใช้งาน / ปลดระงับ)
+ */
+export const toggleDepartmentServiceStatus = (
+    id: string,
+    toggleDepartmentServiceStatusRequest: NonReadonly<ToggleDepartmentServiceStatusRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<DepartmentServiceDTO>(
+      {url: `/api/departments/services/${id}/toggle-status`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: toggleDepartmentServiceStatusRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getToggleDepartmentServiceStatusMutationOptions = <TError = ErrorModel,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentServiceStatusRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentServiceStatusRequest>}, TContext> => {
+
+const mutationKey = ['toggleDepartmentServiceStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>, {id: string;data: NonReadonly<ToggleDepartmentServiceStatusRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  toggleDepartmentServiceStatus(id,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleDepartmentServiceStatusMutationResult = NonNullable<Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>>
+    export type ToggleDepartmentServiceStatusMutationBody = NonReadonly<ToggleDepartmentServiceStatusRequest>
+    export type ToggleDepartmentServiceStatusMutationError = ErrorModel
+
+    /**
+ * @summary Toggle active status of a department service (ระงับการใช้งาน / ปลดระงับ)
+ */
+export const useToggleDepartmentServiceStatus = <TError = ErrorModel,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentServiceStatusRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof toggleDepartmentServiceStatus>>,
+        TError,
+        {id: string;data: NonReadonly<ToggleDepartmentServiceStatusRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getToggleDepartmentServiceStatusMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * @summary Delete or suspend a department
  */
 export const deleteDepartment = (
     id: string,
@@ -554,7 +621,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteDepartmentMutationError = ErrorModel
 
     /**
- * @summary Delete a department
+ * @summary Delete or suspend a department
  */
 export const useDeleteDepartment = <TError = ErrorModel,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDepartment>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
@@ -630,6 +697,71 @@ export const useUpdateDepartment = <TError = ErrorModel,
       > => {
 
       const mutationOptions = getUpdateDepartmentMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * @summary Toggle department active or suspended status
+ */
+export const toggleDepartmentStatus = (
+    id: string,
+    toggleDepartmentStatusRequest: NonReadonly<ToggleDepartmentStatusRequest>,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+      
+      
+      return customInstance<DepartmentDTO>(
+      {url: `/api/departments/${id}/toggle-status`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: toggleDepartmentStatusRequest, signal
+    },
+      options);
+    }
+  
+
+
+export const getToggleDepartmentStatusMutationOptions = <TError = ErrorModel,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentStatusRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentStatusRequest>}, TContext> => {
+
+const mutationKey = ['toggleDepartmentStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleDepartmentStatus>>, {id: string;data: NonReadonly<ToggleDepartmentStatusRequest>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  toggleDepartmentStatus(id,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleDepartmentStatusMutationResult = NonNullable<Awaited<ReturnType<typeof toggleDepartmentStatus>>>
+    export type ToggleDepartmentStatusMutationBody = NonReadonly<ToggleDepartmentStatusRequest>
+    export type ToggleDepartmentStatusMutationError = ErrorModel
+
+    /**
+ * @summary Toggle department active or suspended status
+ */
+export const useToggleDepartmentStatus = <TError = ErrorModel,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDepartmentStatus>>, TError,{id: string;data: NonReadonly<ToggleDepartmentStatusRequest>}, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof toggleDepartmentStatus>>,
+        TError,
+        {id: string;data: NonReadonly<ToggleDepartmentStatusRequest>},
+        TContext
+      > => {
+
+      const mutationOptions = getToggleDepartmentStatusMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

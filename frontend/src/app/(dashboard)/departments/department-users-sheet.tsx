@@ -108,7 +108,7 @@ export function DepartmentUsersSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-2xl" side="right">
+      <SheetContent className="overflow-y-auto w-full sm:max-w-3xl lg:max-w-4xl" side="right">
         <SheetHeader className="mb-6 flex flex-row items-center justify-between">
           <div>
             <SheetTitle>จัดการบัญชีผู้ใช้งาน</SheetTitle>
@@ -164,7 +164,7 @@ export function DepartmentUsersSheet({
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize text-xs font-normal">
-                        {u.role === "admin"
+                        {u.roleName || (u.role === "admin"
                           ? "ผู้ดูแลระบบ"
                           : u.role === "central_staff"
                             ? "จนท.ส่วนกลาง"
@@ -172,7 +172,7 @@ export function DepartmentUsersSheet({
                               ? "จนท.ภูมิภาค"
                               : u.role === "auditor"
                                 ? "ผู้ตรวจสอบ"
-                                : "ผู้ใช้งาน"}
+                                : u.role || "ผู้ใช้งาน")}
                       </Badge>
                     </TableCell>
                     <TableCell>

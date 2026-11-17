@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { format } from "date-fns";
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -50,6 +49,7 @@ export function MonthPickerBE({
   defaultValue,
   value,
   required,
+  disabled,
   onChange,
   className,
 }: {
@@ -58,33 +58,41 @@ export function MonthPickerBE({
   defaultValue?: string; // Expects "YYYY-MM"
   value?: string;
   required?: boolean;
+  disabled?: boolean;
   onChange?: (value: string) => void;
   className?: string;
 }) {
   const isControlled = value !== undefined;
-  const [internalDate, setInternalDate] = React.useState<Date | undefined>(() =>
-    parseMonthValue(value !== undefined ? value : defaultValue),
+  const [internalValue, setInternalValue] = React.useState<string>(
+    defaultValue || "",
   );
 
-  React.useEffect(() => {
-    if (isControlled) {
-      setInternalDate(parseMonthValue(value));
-    }
-  }, [value, isControlled]);
+  const currentValue = isControlled ? (value || "") : internalValue;
+  const date = React.useMemo(
+    () => parseMonthValue(currentValue),
+    [currentValue],
+  );
 
-  const date = isControlled ? parseMonthValue(value) : internalDate;
-
-  // For the view in the popover
-  const [viewYear, setViewYear] = React.useState<number>(
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [viewYear, setViewYear] = React.useState<number>(() =>
     date ? date.getFullYear() : new Date().getFullYear(),
   );
-  const [isOpen, setIsOpen] = React.useState(false);
 
+  // Sync viewYear whenever the selected value's year changes externally
+  const selectedYear = date ? date.getFullYear() : undefined;
   React.useEffect(() => {
-    if (date) {
-      setViewYear(date.getFullYear());
+    if (selectedYear !== undefined) {
+      setViewYear(selectedYear);
     }
-  }, [date]);
+  }, [selectedYear]);
+
+  // When opening the popover, initialize viewYear to the currently selected year or current year
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
+      setViewYear(date ? date.getFullYear() : new Date().getFullYear());
+    }
+  };
 
   const formatBE = (d: Date) => {
     const year = d.getFullYear() + 543;
@@ -93,19 +101,15 @@ export function MonthPickerBE({
   };
 
   const handleMonthSelect = (monthIndex: number) => {
-    const newDate = new Date(viewYear, monthIndex, 1);
+    const mm = String(monthIndex + 1).padStart(2, "0");
+    const formatted = `${viewYear}-${mm}`;
     if (!isControlled) {
-      setDateInternal(newDate);
+      setInternalValue(formatted);
     }
     setIsOpen(false);
     if (onChange) {
-      const mm = String(monthIndex + 1).padStart(2, "0");
-      onChange(`${viewYear}-${mm}`);
+      onChange(formatted);
     }
-  };
-
-  const setDateInternal = (d: Date) => {
-    setInternalDate(d);
   };
 
   const formattedMonthString = date
@@ -114,11 +118,14 @@ export function MonthPickerBE({
 
   return (
     <>
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           render={
             <Button
+              id={id ? `${id}-trigger` : undefined}
+              type="button"
               variant={"outline"}
+              disabled={disabled}
               className={cn(
                 "w-full justify-start text-left font-normal h-9.5 rounded-xl",
                 !date && "text-muted-foreground",
@@ -136,7 +143,7 @@ export function MonthPickerBE({
               variant="outline"
               type="button"
               className="size-7 rounded-lg bg-transparent p-0 opacity-70 hover:opacity-100"
-              onClick={() => setViewYear(viewYear - 1)}
+              onClick={() => setViewYear((prev) => prev - 1)}
             >
               <ChevronLeft className="size-4" />
             </Button>
@@ -145,7 +152,7 @@ export function MonthPickerBE({
               variant="outline"
               type="button"
               className="size-7 rounded-lg bg-transparent p-0 opacity-70 hover:opacity-100"
-              onClick={() => setViewYear(viewYear + 1)}
+              onClick={() => setViewYear((prev) => prev + 1)}
             >
               <ChevronRight className="size-4" />
             </Button>
@@ -179,4 +186,3 @@ export function MonthPickerBE({
     </>
   );
 }
-

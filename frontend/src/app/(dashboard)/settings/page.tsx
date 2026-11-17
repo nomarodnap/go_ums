@@ -2,7 +2,9 @@
 
 import { useListBudgetCodes } from "@/lib/api/generated/budgets/budgets";
 import { BudgetCodesTable } from "./budget-codes-table";
-import { Settings, Coins } from "lucide-react";
+import { RolesTable } from "./roles-table";
+import { AnnouncementCMS } from "./announcement-cms";
+import { Settings, Coins, Shield, Megaphone } from "lucide-react";
 import { LoadingEffect } from "@/components/ui/loading-effect";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +22,16 @@ export default function SettingsPage() {
     createdAt: item.createdAt,
   }));
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดข้อมูลการตั้งค่าและรหัสงบประมาณ..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex-1 space-y-6">
       {/* Header */}
@@ -29,23 +41,29 @@ export default function SettingsPage() {
           <h2 className="text-3xl font-bold tracking-tight">ตั้งค่าระบบ</h2>
         </div>
         <p className="text-muted-foreground mt-1">
-          จัดการข้อมูลการตั้งค่าพื้นฐานของระบบและรหัสงบประมาณประจำปี
+          จัดการข้อมูลการตั้งค่าพื้นฐานของระบบ รหัสงบประมาณประจำปี และกำหนดสิทธิ์การใช้งาน (RBAC)
         </p>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="budget-codes" className="w-full">
-        <TabsList className="grid w-full sm:w-[320px] grid-cols-1">
+        <TabsList className="grid w-full sm:w-[680px] grid-cols-3">
           <TabsTrigger value="budget-codes" className="gap-2">
             <Coins className="h-4 w-4" />
             <span>รหัสงบประมาณ</span>
           </TabsTrigger>
+          <TabsTrigger value="roles" className="gap-2">
+            <Shield className="h-4 w-4" />
+            <span>กำหนดสิทธิ์การใช้งาน (RBAC)</span>
+          </TabsTrigger>
+          <TabsTrigger value="announcements" className="gap-2">
+            <Megaphone className="h-4 w-4" />
+            <span>ประกาศข่าวสารหน้า Login</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="budget-codes" className="mt-6 space-y-4">
-          {isLoading ? (
-            <LoadingEffect message="กำลังโหลดข้อมูลรหัสงบประมาณ..." />
-          ) : error ? (
+          {error ? (
             <Card className="border-rose-500/20 bg-rose-50/50 dark:bg-rose-950/20">
               <CardContent className="flex flex-col items-center justify-center py-12 text-rose-600 dark:text-rose-400 gap-2">
                 <p className="font-semibold text-sm">ไม่สามารถโหลดข้อมูลรหัสงบประมาณได้</p>
@@ -55,6 +73,14 @@ export default function SettingsPage() {
           ) : (
             <BudgetCodesTable initialData={allBudgetCodes} />
           )}
+        </TabsContent>
+
+        <TabsContent value="roles" className="mt-6 space-y-4">
+          <RolesTable />
+        </TabsContent>
+
+        <TabsContent value="announcements" className="mt-6 space-y-4">
+          <AnnouncementCMS />
         </TabsContent>
       </Tabs>
     </div>

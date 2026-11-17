@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "รหัสเครื่องวัด / เบอร์โทร",
+  title: "รหัสเครื่องวัด / หมายเลขผู้ใช้",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

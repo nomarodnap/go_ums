@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Trash2, Loader2, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ErrorSpeechBubble } from "@/components/ui/error-speech-bubble";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,6 +40,12 @@ import type {
   DepartmentDTO,
   DepartmentServiceDTO,
 } from "@/lib/api/generated/model";
+import {
+  POSITION_LEVEL_OPTIONS,
+  getPhoneReimbursementLimit,
+  getProvidersForUtility,
+  sanitizeServiceNumber,
+} from "@/app/(dashboard)/services/service-form-sheet";
 
 export function DepartmentServicesSheet({
   department,
@@ -63,6 +70,8 @@ export function DepartmentServicesSheet({
   const [locationType, setLocationType] = useState("");
   const [phoneOwnerName, setPhoneOwnerName] = useState("");
   const [phoneOwnerPosition, setPhoneOwnerPosition] = useState("");
+  const [phoneOwnerDivision, setPhoneOwnerDivision] = useState("");
+  const currentProviders = getProvidersForUtility(utilityType);
 
   const [errors, setErrors] = useState<{
     utilityType?: string;
@@ -70,6 +79,7 @@ export function DepartmentServicesSheet({
     serviceNumber?: string;
     phoneOwnerName?: string;
     phoneOwnerPosition?: string;
+    phoneOwnerDivision?: string;
   }>({});
 
   const handleDelete = async (id: string) => {
@@ -97,12 +107,22 @@ export function DepartmentServicesSheet({
 
     if (!utilityType) newErrors.utilityType = "กรุณาเลือกประเภทสาธารณูปโภค";
     if (!provider.trim()) newErrors.provider = "กรุณาระบุผู้ให้บริการ";
-    if (!serviceNumber.trim()) newErrors.serviceNumber = "กรุณาระบุหมายเลขผู้ใช้ / รหัสเครื่องวัด";
+    const cleanNumber = serviceNumber.trim();
+    if (!cleanNumber) {
+      newErrors.serviceNumber = "กรุณาระบุหมายเลขผู้ใช้ / รหัสเครื่องวัด";
+    } else if (
+      services.some(
+        (s) => s.serviceNumber.trim().toUpperCase() === cleanNumber.toUpperCase(),
+      )
+    ) {
+      newErrors.serviceNumber = "รหัสเครื่องวัด / หมายเลขผู้ใช้ นี้ถูกบันทึกในระบบแล้ว";
+    }
 
     const isMobile = utilityType === "ค่าโทรศัพท์" && phoneType === "mobile";
     if (isMobile) {
-      if (!phoneOwnerName.trim()) newErrors.phoneOwnerName = "กรุณาระบุชื่อ-สกุล";
-      if (!phoneOwnerPosition.trim()) newErrors.phoneOwnerPosition = "กรุณาระบุตำแหน่ง";
+      if (!phoneOwnerName.trim()) newErrors.phoneOwnerName = "กรุณาระบุชื่อ-สกุล ผู้ถือครอง";
+      if (!phoneOwnerPosition.trim()) newErrors.phoneOwnerPosition = "กรุณาระบุประเภทและระดับตำแหน่ง";
+      if (!phoneOwnerDivision.trim()) newErrors.phoneOwnerDivision = "กรุณาระบุตำแหน่ง / สังกัด";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -111,17 +131,20 @@ export function DepartmentServicesSheet({
     }
     setErrors({});
 
+    const isMeterUtility = ["ค่าไฟฟ้า", "ค่าประปา&น้ำบาดาล", "ค่าน้ำประปา"].includes(utilityType);
+
     try {
       await createMutation.mutateAsync({
         data: {
           departmentId: department.id,
           utilityType,
           provider: provider.trim(),
-          serviceNumber: serviceNumber.trim(),
-          locationType: locationType || undefined,
+          serviceNumber: cleanNumber,
+          locationType: isMeterUtility ? (locationType || undefined) : undefined,
           phoneOwnerName: isMobile ? phoneOwnerName.trim() : undefined,
           phoneOwnerPosition: isMobile ? phoneOwnerPosition.trim() : undefined,
-          phoneReimbursementLimit: isMobile ? 1000 : undefined,
+          phoneOwnerDivision: isMobile ? phoneOwnerDivision.trim() || undefined : undefined,
+          phoneReimbursementLimit: isMobile ? getPhoneReimbursementLimit(phoneOwnerPosition) : undefined,
         },
       });
 
@@ -135,9 +158,30 @@ export function DepartmentServicesSheet({
       setLocationType("");
       setPhoneOwnerName("");
       setPhoneOwnerPosition("");
+      setPhoneOwnerDivision("");
     } catch (err: unknown) {
+      const errorData = err as {
+        detail?: string;
+        message?: string;
+        title?: string;
+        errors?: Array<{ message: string; location?: string }>;
+      };
+      const validationError = errorData?.errors?.[0]?.message;
       const errorMsg =
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบันทึก";
+        (validationError
+          ? `${errorData?.detail || errorData?.title || "ข้อผิดพลาด"}: ${validationError}`
+          : undefined) ||
+        errorData?.detail ||
+        errorData?.message ||
+        errorData?.title ||
+        (err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการบันทึก");
+      if (
+        errorMsg.includes("รหัสเครื่องวัด") ||
+        errorMsg.includes("หมายเลขผู้ใช้") ||
+        errorMsg.includes("มีบันทึกในระบบแล้ว")
+      ) {
+        setErrors((prev) => ({ ...prev, serviceNumber: errorMsg }));
+      }
       toast.error(errorMsg);
     }
   };
@@ -235,11 +279,15 @@ export function DepartmentServicesSheet({
                   onValueChange={(v) => {
                     if (v) {
                       setUtilityType(v);
-                      setErrors((prev) => ({ ...prev, utilityType: undefined }));
+                      const validProviders = getProvidersForUtility(v);
+                      if (!validProviders.includes(provider)) {
+                        setProvider("");
+                      }
+                      setErrors((prev) => ({ ...prev, utilityType: undefined, provider: undefined }));
                     }
                   }}
                 >
-                  <SelectTrigger className={errors.utilityType ? "border-rose-500 ring-2 ring-rose-500/20" : ""}>
+                  <SelectTrigger className={cn("w-full", errors.utilityType && "border-rose-500 ring-2 ring-rose-500/20")}>
                     <SelectValue placeholder="เลือกประเภท..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -278,86 +326,177 @@ export function DepartmentServicesSheet({
               )}
 
               <div className="grid gap-2 relative">
-                <Label>
+                <Label htmlFor="deptProvider">
                   ผู้ให้บริการ <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <Select
                   value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, provider: undefined }));
+                  onValueChange={(v) => {
+                    if (v) {
+                      setProvider(v);
+                      setErrors((prev) => ({ ...prev, provider: undefined }));
+                    }
                   }}
-                  placeholder="เช่น กฟภ., TOT"
-                  className={errors.provider ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
-                />
+                  disabled={!utilityType}
+                >
+                  <SelectTrigger
+                    id="deptProvider"
+                    className={cn("w-full", errors.provider && "border-rose-500 ring-2 ring-rose-500/20")}
+                  >
+                    <SelectValue
+                      placeholder={
+                        utilityType
+                          ? "เลือกผู้ให้บริการ"
+                          : "กรุณาเลือกประเภทสาธารณูปโภคก่อน"
+                      }
+                    >
+                      {provider ||
+                        (utilityType
+                          ? "เลือกผู้ให้บริการ"
+                          : "กรุณาเลือกประเภทสาธารณูปโภคก่อน")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {provider &&
+                      currentProviders.length > 0 &&
+                      !currentProviders.includes(provider) && (
+                        <SelectItem value={provider}>{provider}</SelectItem>
+                      )}
+                    {currentProviders.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <ErrorSpeechBubble message={errors.provider} />
               </div>
 
               <div className="grid gap-2 relative">
-                <Label>
+                <Label htmlFor="deptServiceNumber">
                   หมายเลขผู้ใช้ / รหัสเครื่องวัด <span className="text-destructive">*</span>
                 </Label>
                 <Input
+                  id="deptServiceNumber"
                   value={serviceNumber}
                   onChange={(e) => {
-                    setServiceNumber(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, serviceNumber: undefined }));
+                    const val = sanitizeServiceNumber(e.target.value);
+                    setServiceNumber(val);
+                    if (val.trim()) setErrors((prev) => ({ ...prev, serviceNumber: undefined }));
                   }}
-                  placeholder="หมายเลขเครื่องวัด"
-                  className={errors.serviceNumber ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
+                  placeholder="หมายเลขเครื่องวัด (เฉพาะตัวเลขและภาษาอังกฤษ)"
+                  className={cn(
+                    "uppercase",
+                    errors.serviceNumber ? "border-rose-500 ring-2 ring-rose-500/20" : "",
+                  )}
                 />
                 <ErrorSpeechBubble message={errors.serviceNumber} />
               </div>
 
-              {!["ค่าไปรษณีย์", "ค่าบริการไปรษณีย์"].includes(utilityType) &&
-                (utilityType !== "ค่าโทรศัพท์" || phoneType === "home") && (
-                  <div className="grid gap-2">
-                    <Label>ที่ตั้ง (ถ้ามี)</Label>
-                    <Select value={locationType} onValueChange={(v) => v && setLocationType(v)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="เลือกที่ตั้ง..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="สำนักงาน">สำนักงาน</SelectItem>
-                        <SelectItem value="บ่อเพาะ">บ่อเพาะ</SelectItem>
-                        <SelectItem value="บ้านพัก">บ้านพัก</SelectItem>
-                        <SelectItem value="อื่นๆ">อื่นๆ</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+              {["ค่าไฟฟ้า", "ค่าประปา&น้ำบาดาล", "ค่าน้ำประปา"].includes(utilityType) && (
+                <div className="grid gap-2">
+                  <Label>ที่ตั้ง (ถ้ามี)</Label>
+                  <Select value={locationType} onValueChange={(v) => v && setLocationType(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="เลือกที่ตั้ง..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="สำนักงาน">สำนักงาน</SelectItem>
+                      <SelectItem value="บ่อเพาะ">บ่อเพาะ</SelectItem>
+                      <SelectItem value="บ้านพัก">บ้านพัก</SelectItem>
+                      <SelectItem value="อื่นๆ">อื่นๆ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {utilityType === "ค่าโทรศัพท์" && phoneType === "mobile" && (
                 <>
                   <div className="grid gap-2 relative">
-                    <Label>
-                      ชื่อ-สกุลเจ้าของเบอร์ <span className="text-destructive">*</span>
+                    <Label htmlFor="deptPhoneOwnerName">
+                      ชื่อ-สกุล ผู้ถือครอง <span className="text-destructive">*</span>
                     </Label>
                     <Input
+                      id="deptPhoneOwnerName"
                       value={phoneOwnerName}
                       onChange={(e) => {
                         setPhoneOwnerName(e.target.value);
                         if (e.target.value.trim()) setErrors((prev) => ({ ...prev, phoneOwnerName: undefined }));
                       }}
-                      placeholder="ระบุชื่อ-สกุล"
+                      placeholder="ระบุชื่อ-สกุลผู้ถือครอง"
                       className={errors.phoneOwnerName ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                     />
                     <ErrorSpeechBubble message={errors.phoneOwnerName} />
                   </div>
                   <div className="grid gap-2 relative">
-                    <Label>
-                      ตำแหน่งเจ้าของเบอร์ <span className="text-destructive">*</span>
+                    <Label htmlFor="deptPhoneOwnerPosition">
+                      ประเภทและระดับตำแหน่ง <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={phoneOwnerPosition}
+                      onValueChange={(v) => {
+                        if (v) {
+                          setPhoneOwnerPosition(v);
+                          setErrors((prev) => ({ ...prev, phoneOwnerPosition: undefined }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        id="deptPhoneOwnerPosition"
+                        className={cn("w-full", errors.phoneOwnerPosition && "border-rose-500 ring-2 ring-rose-500/20")}
+                      >
+                        <SelectValue placeholder="เลือกประเภทและระดับตำแหน่ง">
+                          {phoneOwnerPosition || "เลือกประเภทและระดับตำแหน่ง"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {phoneOwnerPosition &&
+                          !POSITION_LEVEL_OPTIONS.includes(
+                            phoneOwnerPosition as (typeof POSITION_LEVEL_OPTIONS)[number],
+                          ) && (
+                            <SelectItem value={phoneOwnerPosition}>
+                              {phoneOwnerPosition}
+                            </SelectItem>
+                          )}
+                        {POSITION_LEVEL_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <ErrorSpeechBubble message={errors.phoneOwnerPosition} />
+                  </div>
+                  <div className="grid gap-2 relative">
+                    <Label htmlFor="deptPhoneOwnerDivision">
+                      ตำแหน่ง / สังกัด <span className="text-destructive">*</span>
                     </Label>
                     <Input
-                      value={phoneOwnerPosition}
+                      id="deptPhoneOwnerDivision"
+                      value={phoneOwnerDivision}
                       onChange={(e) => {
-                        setPhoneOwnerPosition(e.target.value);
-                        if (e.target.value.trim()) setErrors((prev) => ({ ...prev, phoneOwnerPosition: undefined }));
+                        setPhoneOwnerDivision(e.target.value);
+                        if (e.target.value.trim()) setErrors((prev) => ({ ...prev, phoneOwnerDivision: undefined }));
                       }}
-                      placeholder="ระบุตำแหน่ง"
-                      className={errors.phoneOwnerPosition ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
+                      placeholder="เช่น ผู้อำนวยการศูนย์เทคโนโลยีสารสนเทศและการสื่อสาร"
+                      className={errors.phoneOwnerDivision ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
                     />
-                    <ErrorSpeechBubble message={errors.phoneOwnerPosition} />
+                    <ErrorSpeechBubble message={errors.phoneOwnerDivision} />
+                  </div>
+                  <div className="grid gap-2 relative">
+                    <Label htmlFor="deptPhoneReimbursementLimit">
+                      เพดานสิทธิเบิก (บาท/เดือน)
+                    </Label>
+                    <Input
+                      id="deptPhoneReimbursementLimit"
+                      value={`${getPhoneReimbursementLimit(phoneOwnerPosition).toLocaleString()} บาท`}
+                      disabled
+                      readOnly
+                      className="bg-muted/60 text-foreground cursor-not-allowed font-medium select-none"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      * คำนวณอัตโนมัติตามประเภทและระดับตำแหน่งที่เลือก
+                    </p>
                   </div>
                 </>
               )}

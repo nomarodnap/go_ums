@@ -1,6 +1,8 @@
 "use client";
 
 import { useGetBudgetReport } from "@/lib/api/generated/reports/reports";
+import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
+import { ForecastPanel } from "@/components/ai/forecast-panel";
 import {
   Table,
   TableBody,
@@ -12,16 +14,88 @@ import {
 import { Button } from "@/components/ui/button";
 import { Printer, AlertTriangle, ArrowLeft } from "lucide-react";
 import { LoadingEffect } from "@/components/ui/loading-effect";
+import { SortableHeader, useTableSort } from "@/components/ui/sortable-header";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
+import { exportToExcel } from "@/lib/excel-export";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export default function BudgetReportPage() {
+  const { data: userData } = useGetCurrentUser();
+  const user = userData?.status === 200 ? userData.data.user : null;
+  const isAdmin = ["admin", "auditor", "strategy_finance", "central_staff"].includes(
+    user?.role || "",
+  );
   const { data: reportRes, isLoading } = useGetBudgetReport();
   const reportData =
     reportRes?.status === 200 && Array.isArray(reportRes.data)
       ? reportRes.data
       : [];
+
+  const { sortKey, sortOrder, handleSort, sortedData } = useTableSort(reportData, {
+    comparators: {
+      fiscalYear: (a, b) => (a.fiscalYear || 0) - (b.fiscalYear || 0),
+      departmentName: (a, b) => (a.departmentName || "").localeCompare(b.departmentName || "", "th"),
+      allocatedAmount: (a, b) => Number(a.allocatedAmount || 0) - Number(b.allocatedAmount || 0),
+      usedAmount: (a, b) => Number(a.usedAmount || 0) - Number(b.usedAmount || 0),
+      remainingAmount: (a, b) => {
+        const remA = Number(a.remainingAmount !== undefined ? a.remainingAmount : (Number(a.allocatedAmount || 0) - Number(a.usedAmount || 0)));
+        const remB = Number(b.remainingAmount !== undefined ? b.remainingAmount : (Number(b.allocatedAmount || 0) - Number(b.usedAmount || 0)));
+        return remA - remB;
+      },
+      status: (a, b) => {
+        const remA = Number(a.remainingAmount !== undefined ? a.remainingAmount : (Number(a.allocatedAmount || 0) - Number(a.usedAmount || 0)));
+        const remB = Number(b.remainingAmount !== undefined ? b.remainingAmount : (Number(b.allocatedAmount || 0) - Number(b.usedAmount || 0)));
+        return remA - remB;
+      },
+    },
+  });
+
+  const handleExportExcel = () => {
+    exportToExcel({
+      filename: `รายงานการบริหารงบประมาณ`,
+      sheetName: "บริหารงบประมาณ",
+      data: sortedData,
+      columns: [
+        { header: "ลำดับ", transform: (_, i) => i + 1, width: 8 },
+        { header: "ปีงบประมาณ", transform: (r) => (r.fiscalYear ? r.fiscalYear + 543 : "-"), width: 15 },
+        { header: "หน่วยงาน", transform: (r) => r.departmentName || "-", width: 35 },
+        {
+          header: "งบประมาณจัดสรร (บาท)",
+          transform: (r) => Number(r.allocatedAmount || 0),
+          width: 24,
+        },
+        {
+          header: "งบประมาณใช้ไป (บาท)",
+          transform: (r) => Number(r.usedAmount || 0),
+          width: 24,
+        },
+        {
+          header: "งบประมาณคงเหลือ (บาท)",
+          transform: (r) =>
+            Number(
+              r.remainingAmount !== undefined
+                ? r.remainingAmount
+                : Number(r.allocatedAmount || 0) - Number(r.usedAmount || 0),
+            ),
+          width: 24,
+        },
+        {
+          header: "สถานะ",
+          transform: (r) => {
+            const rem = Number(
+              r.remainingAmount !== undefined
+                ? r.remainingAmount
+                : Number(r.allocatedAmount || 0) - Number(r.usedAmount || 0),
+            );
+            return rem < 0 ? "เกินงบประมาณ" : "ปกติ";
+          },
+          width: 18,
+        },
+      ],
+    });
+  };
 
   const handlePrint = () => {
     if (typeof window !== "undefined") {
@@ -29,18 +103,27 @@ export default function BudgetReportPage() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังรวบรวมข้อมูลรายงานการบริหารงบประมาณ..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex-1 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white dark:bg-slate-900 p-1.5 shadow-xs border border-black/[0.06] dark:border-white/[0.08]">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white dark:bg-slate-900 p-0.5 shadow-xs border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
             <Image
               src="/logo.png"
               alt="ตราสัญลักษณ์กรมประมง"
               width={48}
               height={48}
-              style={{ width: "auto", height: "auto" }}
-              className="size-9 object-contain"
+              className="size-full object-contain"
               priority
             />
           </div>
@@ -62,6 +145,10 @@ export default function BudgetReportPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 print:hidden">
+          <ExportExcelButton
+            onExport={handleExportExcel}
+            disabled={sortedData.length === 0}
+          />
           <Button
             variant="outline"
             onClick={handlePrint}
@@ -72,23 +159,76 @@ export default function BudgetReportPage() {
         </div>
       </div>
 
+      <div className="print:hidden">
+        <ForecastPanel
+          scope={isAdmin ? "all" : "department"}
+          departmentId={!isAdmin ? user?.departmentId || undefined : undefined}
+          defaultTab="budget"
+          enabled={Boolean(user)}
+          billsHref={isAdmin ? "/all-bills" : "/bills"}
+        />
+      </div>
+
       <div className="rounded-2xl border bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs overflow-hidden print:border-none print:shadow-none print:bg-transparent">
-        {isLoading ? (
-          <LoadingEffect message="กำลังรวบรวมข้อมูลงบประมาณ..." />
-        ) : (
-          <Table>
+        <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>ปีงบประมาณ</TableHead>
-                <TableHead>หน่วยงาน</TableHead>
-                <TableHead className="text-right">งบประมาณจัดสรร</TableHead>
-                <TableHead className="text-right">เบิกจ่ายไปแล้ว</TableHead>
-                <TableHead className="text-right">คงเหลือ</TableHead>
-                <TableHead className="text-center">สถานะ</TableHead>
+                <SortableHeader
+                  sortKey="fiscalYear"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  ปีงบประมาณ
+                </SortableHeader>
+                <SortableHeader
+                  sortKey="departmentName"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  หน่วยงาน
+                </SortableHeader>
+                <SortableHeader
+                  align="right"
+                  sortKey="allocatedAmount"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  งบประมาณจัดสรร
+                </SortableHeader>
+                <SortableHeader
+                  align="right"
+                  sortKey="usedAmount"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  เบิกจ่ายไปแล้ว
+                </SortableHeader>
+                <SortableHeader
+                  align="right"
+                  sortKey="remainingAmount"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  คงเหลือ
+                </SortableHeader>
+                <SortableHeader
+                  align="center"
+                  sortKey="status"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  สถานะ
+                </SortableHeader>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reportData.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={6}
@@ -98,7 +238,7 @@ export default function BudgetReportPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                reportData.map((row, idx) => {
+                sortedData.map((row, idx) => {
                   const allocated = Number(row.allocatedAmount || 0);
                   const used = Number(row.usedAmount || 0);
                   const remaining = Number(row.remainingAmount !== undefined ? row.remainingAmount : (allocated - used));
@@ -169,7 +309,6 @@ export default function BudgetReportPage() {
               )}
             </TableBody>
           </Table>
-        )}
       </div>
     </div>
   );

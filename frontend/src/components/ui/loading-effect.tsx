@@ -18,7 +18,7 @@ export function LoadingEffect({
   className,
   message = "กำลังโหลดข้อมูล...",
   subMessage = "ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง",
-  fullScreen = false,
+  fullScreen = true,
 }: LoadingEffectProps) {
   const [progress, setProgress] = useState(28);
   const [mounted, setMounted] = useState(false);
@@ -41,13 +41,60 @@ export function LoadingEffect({
 
   if (fullScreen) {
     if (!mounted || typeof document === "undefined") {
-      return null;
+      return (
+        <div
+          className={cn(
+            "fixed inset-0 z-[9999999] flex h-screen w-screen flex-col items-center justify-center bg-background dark:bg-slate-950 backdrop-blur-2xl select-none",
+            className,
+          )}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: "100vw",
+            height: "100vh",
+            margin: 0,
+            padding: 0,
+          }}
+        >
+          <div className="relative mb-6 flex items-center justify-center">
+            <div className="absolute -inset-2.5 rounded-full border-2 border-transparent border-t-primary border-r-primary/40 animate-spin" />
+            <div className="relative flex size-20 items-center justify-center rounded-full bg-card/95 dark:bg-slate-900/95 p-1 shadow-2xl border border-black/[0.08] dark:border-white/[0.12] overflow-hidden">
+              <Image
+                src="/logo.png"
+                alt="ตราสัญลักษณ์กรมประมง"
+                width={72}
+                height={72}
+                className="size-full object-contain"
+                priority
+                unoptimized
+              />
+            </div>
+          </div>
+          <div className="space-y-1 mb-5 text-center">
+            <h3 className="text-lg font-bold tracking-tight text-foreground">
+              กรมประมง
+            </h3>
+            <p className="text-xs text-muted-foreground">{subMessage}</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="size-2 rounded-full bg-primary animate-ping" />
+            <span className="font-medium text-foreground/90">{message}</span>
+          </div>
+        </div>
+      );
     }
 
     const fullScreenContent = (
-      <div
+      <motion.div
+        initial={{ opacity: 1 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.35, ease: "easeInOut" }}
         className={cn(
-          "fixed inset-0 z-[9999999] flex h-screen w-screen flex-col items-center justify-center bg-background/80 dark:bg-slate-950/85 backdrop-blur-2xl transition-all duration-300 select-none",
+          "fixed inset-0 z-[9999999] flex h-screen w-screen flex-col items-center justify-center bg-background dark:bg-slate-950 backdrop-blur-2xl select-none",
           className,
         )}
         style={{
@@ -87,46 +134,31 @@ export function LoadingEffect({
             <div className="absolute -inset-2.5 rounded-full border-2 border-transparent border-t-primary border-r-primary/40 animate-spin" />
 
             {/* Emblem container */}
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="relative flex size-20 items-center justify-center rounded-3xl bg-card/95 dark:bg-slate-900/95 p-3.5 shadow-2xl border border-black/[0.08] dark:border-white/[0.12] backdrop-blur-xl"
-            >
+            <div className="relative flex size-20 items-center justify-center rounded-full bg-card/95 dark:bg-slate-900/95 p-1 shadow-2xl border border-black/[0.08] dark:border-white/[0.12] backdrop-blur-xl overflow-hidden">
               <Image
                 src="/logo.png"
                 alt="ตราสัญลักษณ์กรมประมง"
-                width={56}
-                height={56}
-                style={{ width: "auto", height: "auto" }}
-                className="max-h-14 max-w-14 object-contain drop-shadow-md"
+                width={72}
+                height={72}
+                className="size-full object-contain drop-shadow-md"
                 priority
+                unoptimized
               />
-            </motion.div>
+            </div>
           </div>
 
           {/* Titles */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.4 }}
-            className="space-y-1 mb-5"
-          >
+          <div className="space-y-1 mb-5">
             <h3 className="text-lg font-bold tracking-tight text-foreground">
               กรมประมง
             </h3>
             <p className="text-xs text-muted-foreground">
               {subMessage}
             </p>
-          </motion.div>
+          </div>
 
           {/* Progress track & NumberFlow counter */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.4 }}
-            className="w-full max-w-xs space-y-2.5"
-          >
+          <div className="w-full max-w-xs space-y-2.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
               <span className="font-medium flex items-center gap-2 text-foreground/90">
                 <span className="size-2 rounded-full bg-primary animate-ping" />
@@ -147,19 +179,14 @@ export function LoadingEffect({
                 transition={{ ease: "easeOut", duration: 0.3 }}
               />
             </div>
-          </motion.div>
+          </div>
 
           {/* Subtle micro tag */}
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.35, duration: 0.5 }}
-            className="text-[11px] text-muted-foreground/60 mt-6 tracking-wider font-sans uppercase"
-          >
+          <p className="text-[11px] text-muted-foreground/60 mt-6 tracking-wider font-sans uppercase">
             กำลังเชื่อมต่อฐานข้อมูล • ความปลอดภัยระดับสูง
-          </motion.p>
+          </p>
         </div>
-      </div>
+      </motion.div>
     );
 
     return createPortal(fullScreenContent, document.body);
@@ -191,15 +218,15 @@ export function LoadingEffect({
         {/* Rotating outer spinner ring */}
         <div className="absolute -inset-2 rounded-full border-2 border-transparent border-t-primary border-r-primary/40 animate-spin" />
 
-        <div className="relative flex size-16 items-center justify-center rounded-2xl bg-card/90 dark:bg-slate-900/90 p-2.5 shadow-lg border border-black/[0.08] dark:border-white/[0.12]">
+        <div className="relative flex size-16 items-center justify-center rounded-full bg-card/90 dark:bg-slate-900/90 p-1 shadow-lg border border-black/[0.08] dark:border-white/[0.12] overflow-hidden">
           <Image
             src="/logo.png"
             alt="ตราสัญลักษณ์กรมประมง"
-            width={48}
-            height={48}
-            style={{ width: "auto", height: "auto" }}
-            className="max-h-12 max-w-12 object-contain"
+            width={58}
+            height={58}
+            className="size-full object-contain"
             priority
+            unoptimized
           />
         </div>
       </div>

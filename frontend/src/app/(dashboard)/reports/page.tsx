@@ -144,7 +144,13 @@ export default function ReportsCenterPage() {
   const userRole = user?.role || "user";
 
   if (isLoading) {
-    return <LoadingEffect message="กำลังโหลดศูนย์รวมรายงาน..." />;
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดศูนย์รวมรายงาน..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
   }
 
   return (

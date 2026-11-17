@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Zap,
   Droplet,
@@ -43,7 +45,21 @@ import {
   Flag,
   CheckCircle2,
   Clock,
+  RotateCcw,
+  X,
+  Sparkles,
 } from "lucide-react";
+import {
+  type AISearchBillHit,
+  type AISearchResponse,
+  extractAIErrorMessage,
+  searchAI,
+} from "@/lib/api/ai-hooks";
+import { cn } from "@/lib/utils";
+import { SortableHeader, useTableSort } from "@/components/ui/sortable-header";
+import { ExportExcelButton } from "@/components/ui/export-excel-button";
+import { exportToExcel } from "@/lib/excel-export";
+import { canReviewBills, canFlagAnomaly } from "@/lib/permissions";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import {
@@ -136,6 +152,7 @@ type Bill = {
   isAnomalyExpense?: boolean | null;
   isManualAnomaly?: boolean | null;
   manualAnomalyReason?: string | null;
+  manualAnomalyDetail?: string | null;
   isReviewed?: boolean | null;
   reviewedBy?: string | null;
   reviewedAt?: Date | null;
@@ -150,20 +167,207 @@ export function BillsTable({
   services = [],
   showAuditStatus = false,
   userRole,
+  userPermissions,
+  pagePath = "/bills",
+  initialSearchTerm,
+  initialDepartmentId,
+  initialStatusFilter,
+  initialAnomalyFilter,
+  disableDrawer = false,
 }: {
   initialData: Bill[];
   services?: any[];
   showAuditStatus?: boolean;
   userRole?: string;
+  userPermissions?: string[] | null;
+  pagePath?: string;
+  initialSearchTerm?: string | null;
+  initialDepartmentId?: string | null;
+  initialStatusFilter?: string | null;
+  initialAnomalyFilter?: string | null;
+  disableDrawer?: boolean;
 }) {
   const router = useRouter();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ทุกสถานะ");
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || "");
+  const [aiSearchMode, setAISearchMode] = useState(
+    Boolean(initialSearchTerm?.trim()),
+  );
+  const [aiSearchLoading, setAISearchLoading] = useState(false);
+  const [aiSearchError, setAISearchError] = useState<string | null>(null);
+  const [aiSearchResult, setAISearchResult] =
+    useState<AISearchResponse | null>(null);
+  const aiAbortRef = useRef<AbortController | null>(null);
+  const lastInitialSearchRef = useRef<string>("");
+  const [departmentFilter, setDepartmentFilter] = useState(initialDepartmentId || "all");
+  const [statusFilter, setStatusFilter] = useState(() => {
+    if (initialStatusFilter) {
+      if (initialStatusFilter === "OVERDUE" || initialStatusFilter === "ค้างชำระ") {
+        return "OVERDUE";
+      }
+      if (initialStatusFilter === "PAID" || initialStatusFilter === "เบิกจ่ายแล้ว" || initialStatusFilter === "ผลการเบิกจ่าย") {
+        return "PAID";
+      }
+      return initialStatusFilter;
+    }
+    return "ทุกสถานะ";
+  });
   const [utilityFilter, setUtilityFilter] = useState("ทุกประเภท");
   const [monthFilter, setMonthFilter] = useState("ทุกเดือน");
   const [yearFilter, setYearFilter] = useState("ทุกปี");
-  const [anomalyFilter, setAnomalyFilter] = useState("ทั้งหมด");
+  const [anomalyFilter, setAnomalyFilter] = useState(() => {
+    if (initialAnomalyFilter) {
+      if (
+        initialAnomalyFilter === "true" ||
+        initialAnomalyFilter === "ANOMALY" ||
+        initialAnomalyFilter === "พบความคลาดเคลื่อน" ||
+        initialAnomalyFilter === "พบความผิดปกติ"
+      ) {
+        return "พบความคลาดเคลื่อน";
+      }
+      return initialAnomalyFilter;
+    }
+    return "ทั้งหมด";
+  });
   const [reviewFilter, setReviewFilter] = useState("ทั้งหมด");
+
+  useEffect(() => {
+    if (initialDepartmentId) {
+      setDepartmentFilter(initialDepartmentId);
+    }
+  }, [initialDepartmentId]);
+
+  useEffect(() => {
+    if (initialStatusFilter) {
+      if (initialStatusFilter === "ค้างชำระ" || initialStatusFilter === "OVERDUE") {
+        setStatusFilter("OVERDUE");
+      } else if (initialStatusFilter === "เบิกจ่ายแล้ว" || initialStatusFilter === "PAID" || initialStatusFilter === "ผลการเบิกจ่าย") {
+        setStatusFilter("PAID");
+      } else {
+        setStatusFilter(initialStatusFilter);
+      }
+    }
+  }, [initialStatusFilter]);
+
+  useEffect(() => {
+    if (initialAnomalyFilter) {
+      if (
+        initialAnomalyFilter === "true" ||
+        initialAnomalyFilter === "ANOMALY" ||
+        initialAnomalyFilter === "พบความคลาดเคลื่อน" ||
+        initialAnomalyFilter === "พบความผิดปกติ"
+      ) {
+        setAnomalyFilter("พบความคลาดเคลื่อน");
+      } else {
+        setAnomalyFilter(initialAnomalyFilter);
+      }
+    }
+  }, [initialAnomalyFilter]);
+
+  const selectedDeptName = useMemo(() => {
+    if (departmentFilter === "all") return null;
+    const match = initialData.find((b) => b.departmentId === departmentFilter);
+    if (match) return match.departmentName || match.departmentShortName || departmentFilter;
+    const serviceMatch = services.find((s) => s.departmentId === departmentFilter);
+    if (serviceMatch) return serviceMatch.departmentName || departmentFilter;
+    return departmentFilter;
+  }, [departmentFilter, initialData, services]);
+
+  const runAISearch = useCallback(async (rawQuery: string) => {
+    const q = rawQuery.trim();
+    if (!q) {
+      aiAbortRef.current?.abort();
+      setAISearchResult(null);
+      setAISearchError(null);
+      setAISearchLoading(false);
+      return;
+    }
+
+    aiAbortRef.current?.abort();
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
+    setAISearchLoading(true);
+    setAISearchError(null);
+
+    try {
+      const res = await searchAI(
+        { query: q, entityType: "bills", limit: 40 },
+        controller.signal,
+      );
+      if (!controller.signal.aborted) {
+        setAISearchResult(res);
+      }
+    } catch (err) {
+      if (
+        (err as { name?: string })?.name === "AbortError" ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
+      setAISearchError(
+        extractAIErrorMessage(
+          err,
+          "ไม่สามารถค้นหาข้อมูลด้วย AI ได้ กรุณาลองใหม่อีกครั้ง",
+        ),
+      );
+    } finally {
+      if (!controller.signal.aborted) {
+        setAISearchLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      aiAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const q = (initialSearchTerm || "").trim();
+    if (q && lastInitialSearchRef.current !== q) {
+      lastInitialSearchRef.current = q;
+      setSearchTerm(q);
+      setAISearchMode(true);
+      void runAISearch(q);
+    }
+  }, [initialSearchTerm, runAISearch]);
+
+  const isFiltered =
+    searchTerm !== "" ||
+    aiSearchResult !== null ||
+    departmentFilter !== "all" ||
+    monthFilter !== "ทุกเดือน" ||
+    yearFilter !== "ทุกปี" ||
+    utilityFilter !== "ทุกประเภท" ||
+    statusFilter !== "ทุกสถานะ" ||
+    anomalyFilter !== "ทั้งหมด" ||
+    reviewFilter !== "ทั้งหมด";
+
+  const handleResetFilters = () => {
+    aiAbortRef.current?.abort();
+    setSearchTerm("");
+    setAISearchMode(false);
+    setAISearchLoading(false);
+    setAISearchError(null);
+    setAISearchResult(null);
+    setDepartmentFilter("all");
+    setMonthFilter("ทุกเดือน");
+    setYearFilter("ทุกปี");
+    setUtilityFilter("ทุกประเภท");
+    setStatusFilter("ทุกสถานะ");
+    setAnomalyFilter("ทั้งหมด");
+    setReviewFilter("ทั้งหมด");
+  };
+
+  const canReview = canReviewBills(
+    { role: userRole, permissions: userPermissions },
+    pagePath,
+  );
+
+  const canFlag = canFlagAnomaly(
+    { role: userRole, permissions: userPermissions },
+    pagePath,
+  );
 
   const [isPending, startTransition] = useTransition();
   const [billToDelete, setBillToDelete] = useState<string | null>(null);
@@ -173,6 +377,7 @@ export function BillsTable({
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [billToFlag, setBillToFlag] = useState<Bill | null>(null);
   const [flagReason, setFlagReason] = useState("");
+  const [flagDetail, setFlagDetail] = useState("");
   const [billForDrawer, setBillForDrawer] = useState<Bill | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -181,7 +386,7 @@ export function BillsTable({
     setIsDrawerOpen(true);
   };
 
-  const getAuditIssueTexts = (bill: Bill) => {
+  const getAuditIssueTexts = useCallback((bill: Bill) => {
     const issues = [];
     if (bill.isLateReceive) issues.push("ลงรับใบแจ้งหนี้ล่าช้า");
     if (bill.isIncompleteReceiveDate) issues.push("วันที่รับใบแจ้งหนี้ไม่ครบถ้วน");
@@ -196,7 +401,7 @@ export function BillsTable({
     if (bill.isManualAnomaly)
       issues.push(bill.manualAnomalyReason || "ระบุว่าผิดปกติ");
     return issues;
-  };
+  }, []);
 
   const handleView = async (bill: any) => {
     setBillToView(bill);
@@ -214,13 +419,14 @@ export function BillsTable({
   };
 
   const handleFlagManual = () => {
-    if (!billToFlag || !flagReason.trim()) return;
+    if (!canFlag || !billToFlag || !flagReason.trim()) return;
     startTransition(async () => {
-      const result = await flagManualAnomaly(billToFlag.id, flagReason);
+      const result = await flagManualAnomaly(billToFlag.id, flagReason, flagDetail);
       if (result.success) {
         toast.success("บันทึกความผิดปกติเรียบร้อยแล้ว (รีเฟรชเพื่อดูข้อมูลล่าสุด)");
         setBillToFlag(null);
         setFlagReason("");
+        setFlagDetail("");
         setIsViewDialogOpen(false);
         setBillToView(null);
         router.refresh();
@@ -231,7 +437,7 @@ export function BillsTable({
   };
 
   const handleUnflagManual = () => {
-    if (!billToView) return;
+    if (!canFlag || !billToView) return;
     startTransition(async () => {
       const result = await unflagManualAnomaly(billToView.id);
       if (result.success) {
@@ -246,7 +452,7 @@ export function BillsTable({
   };
 
   const handleReview = () => {
-    if (!billToView) return;
+    if (!canReview || !billToView) return;
     startTransition(async () => {
       const result = await markBillAsReviewed(billToView.id, true);
       if (result.success) {
@@ -261,7 +467,7 @@ export function BillsTable({
   };
 
   const handleUnreview = () => {
-    if (!billToView) return;
+    if (!canReview || !billToView) return;
     startTransition(async () => {
       const result = await markBillAsReviewed(billToView.id, false);
       if (result.success) {
@@ -311,61 +517,152 @@ export function BillsTable({
     return format(d, "MMM", { locale: th });
   };
 
-  const filteredData = initialData.filter((bill) => {
-    const term = searchTerm.toLowerCase().trim();
-    const matchesSearch =
-      !term ||
-      bill.billCode?.toLowerCase().includes(term) ||
-      bill.departmentName?.toLowerCase().includes(term) ||
-      bill.departmentShortName?.toLowerCase().includes(term) ||
-      bill.depositUnitName?.toLowerCase().includes(term) ||
-      bill.serviceNumber?.toLowerCase().includes(term) ||
-      bill.invoiceNumber?.toLowerCase().includes(term) ||
-      bill.paymentDocNumber?.toLowerCase().includes(term) ||
-      bill.provider?.toLowerCase().includes(term);
-
-    let matchesStatus = true;
-    if (statusFilter === "NOT_RECEIVED") {
-      matchesStatus = bill.invoiceStatus === "NOT_RECEIVED";
-    } else if (statusFilter === "PENDING") {
-      matchesStatus =
-        bill.paymentStatus === "PENDING" &&
-        bill.invoiceStatus !== "NOT_RECEIVED";
-    } else if (statusFilter === "PAID") {
-      matchesStatus = bill.paymentStatus === "PAID";
+  const aiHitsMap = useMemo(() => {
+    if (!aiSearchResult) return null;
+    const map = new Map<string, AISearchBillHit>();
+    for (const hit of aiSearchResult.bills || []) {
+      map.set(hit.id, hit);
     }
+    return map;
+  }, [aiSearchResult]);
 
-    const matchesUtility =
-      utilityFilter === "ทุกประเภท" || bill.utilityType === utilityFilter;
+  const filteredData = useMemo(() => {
+    const filtered = initialData.filter((bill) => {
+      const term = searchTerm.toLowerCase().trim();
+      const matchesSearch = aiHitsMap
+        ? aiHitsMap.has(bill.id)
+        : !term ||
+          bill.billCode?.toLowerCase().includes(term) ||
+          bill.departmentName?.toLowerCase().includes(term) ||
+          bill.departmentShortName?.toLowerCase().includes(term) ||
+          bill.depositUnitName?.toLowerCase().includes(term) ||
+          bill.serviceNumber?.toLowerCase().includes(term) ||
+          bill.invoiceNumber?.toLowerCase().includes(term) ||
+          bill.paymentDocNumber?.toLowerCase().includes(term) ||
+          bill.provider?.toLowerCase().includes(term);
 
-    const matchesMonth =
-      monthFilter === "ทุกเดือน" || bill.billingMonth.toString() === monthFilter;
-    const matchesYear =
-      yearFilter === "ทุกปี" || bill.billingYear.toString() === yearFilter;
+      let matchesStatus = true;
+      if (statusFilter === "OVERDUE" || statusFilter === "ค้างชำระ") {
+        matchesStatus = bill.paymentStatus === "PENDING";
+      } else if (statusFilter === "NOT_RECEIVED") {
+        matchesStatus = bill.invoiceStatus === "NOT_RECEIVED";
+      } else if (statusFilter === "PENDING") {
+        matchesStatus =
+          bill.paymentStatus === "PENDING" &&
+          bill.invoiceStatus !== "NOT_RECEIVED";
+      } else if (statusFilter === "PAID" || statusFilter === "เบิกจ่ายแล้ว" || statusFilter === "ผลการเบิกจ่าย") {
+        matchesStatus = bill.paymentStatus === "PAID";
+      } else if (statusFilter === "RECEIPT_RECEIVED") {
+        const hasReceipt = Boolean(bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "");
+        matchesStatus = bill.paymentStatus === "PAID" && hasReceipt;
+      }
 
-    let matchesAnomaly = true;
-    if (anomalyFilter === "พบความผิดปกติ") {
-      matchesAnomaly = getAuditIssueTexts(bill).length > 0;
-    } else if (anomalyFilter === "ปกติ, แก้ไขแล้ว") {
-      matchesAnomaly = getAuditIssueTexts(bill).length === 0;
+      const matchesUtility =
+        utilityFilter === "ทุกประเภท" || bill.utilityType === utilityFilter;
+
+      const matchesMonth =
+        monthFilter === "ทุกเดือน" || bill.billingMonth.toString() === monthFilter;
+      const matchesYear =
+        yearFilter === "ทุกปี" || bill.billingYear.toString() === yearFilter;
+
+      let matchesAnomaly = true;
+      if (anomalyFilter === "พบความคลาดเคลื่อน" || anomalyFilter === "พบความผิดปกติ") {
+        matchesAnomaly = getAuditIssueTexts(bill).length > 0;
+      } else if (anomalyFilter === "ปกติ, แก้ไขแล้ว") {
+        matchesAnomaly = getAuditIssueTexts(bill).length === 0;
+      }
+
+      let matchesReview = true;
+      if (reviewFilter === "ยังไม่ได้ตรวจสอบ") {
+        matchesReview = !bill.isReviewed;
+      } else if (reviewFilter === "ตรวจสอบแล้ว") {
+        matchesReview = !!bill.isReviewed;
+      }
+
+      const matchesDepartment =
+        departmentFilter === "all" || bill.departmentId === departmentFilter;
+
+      return (
+        matchesSearch &&
+        matchesDepartment &&
+        matchesStatus &&
+        matchesUtility &&
+        matchesMonth &&
+        matchesYear &&
+        matchesAnomaly &&
+        matchesReview
+      );
+    });
+
+    if (aiHitsMap) {
+      return [...filtered].sort(
+        (a, b) => (aiHitsMap.get(b.id)?.score ?? 0) - (aiHitsMap.get(a.id)?.score ?? 0),
+      );
     }
+    return filtered;
+  }, [
+    initialData,
+    searchTerm,
+    aiHitsMap,
+    statusFilter,
+    utilityFilter,
+    monthFilter,
+    yearFilter,
+    anomalyFilter,
+    reviewFilter,
+    departmentFilter,
+    getAuditIssueTexts,
+  ]);
 
-    let matchesReview = true;
-    if (reviewFilter === "ยังไม่ได้ตรวจสอบ") {
-      matchesReview = !bill.isReviewed;
-    } else if (reviewFilter === "ตรวจสอบแล้ว") {
-      matchesReview = !!bill.isReviewed;
-    }
-
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesUtility &&
-      matchesMonth &&
-      matchesYear &&
-      matchesAnomaly &&
-      matchesReview
-    );
+  const { sortKey, sortOrder, handleSort, sortedData } = useTableSort(filteredData, {
+    comparators: {
+      department: (a, b) => {
+        const nameA = `${a.departmentName || a.departmentShortName || ""} ${a.utilityType || ""}`;
+        const nameB = `${b.departmentName || b.departmentShortName || ""} ${b.utilityType || ""}`;
+        return nameA.localeCompare(nameB, "th");
+      },
+      billCode: (a, b) => {
+        const codeA = `${a.billCode || ""} ${a.serviceNumber || ""}`;
+        const codeB = `${b.billCode || ""} ${b.serviceNumber || ""}`;
+        return codeA.localeCompare(codeB, "th", { numeric: true });
+      },
+      billingPeriod: (a, b) => {
+        const periodA = (a.billingYear || 0) * 12 + (a.billingMonth || 0);
+        const periodB = (b.billingYear || 0) * 12 + (b.billingMonth || 0);
+        return periodA - periodB;
+      },
+      amount: (a, b) => {
+        const valA =
+          a.invoiceAmount !== undefined && a.invoiceAmount !== null
+            ? Number(a.invoiceAmount)
+            : a.paidAmount
+              ? parseFloat(a.paidAmount)
+              : 0;
+        const valB =
+          b.invoiceAmount !== undefined && b.invoiceAmount !== null
+            ? Number(b.invoiceAmount)
+            : b.paidAmount
+              ? parseFloat(b.paidAmount)
+              : 0;
+        return valA - valB;
+      },
+      paymentStatus: (a, b) => {
+        const getPriority = (item: Bill) => {
+          if (item.invoiceStatus === "NOT_RECEIVED") return 0;
+          if (item.paymentStatus === "PAID") {
+            return (item.attachmentReceipt && item.attachmentReceipt.trim() !== "") ? 3 : 2;
+          }
+          return 1;
+        };
+        return getPriority(a) - getPriority(b);
+      },
+      auditStatus: (a, b) => {
+        const issuesA = getAuditIssueTexts(a).length;
+        const issuesB = getAuditIssueTexts(b).length;
+        if (issuesA !== issuesB) return issuesA - issuesB;
+        return (a.isReviewed ? 1 : 0) - (b.isReviewed ? 1 : 0);
+      },
+    },
   });
 
   const THAI_MONTHS = [
@@ -386,19 +683,233 @@ export function BillsTable({
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
+  const handleExportExcel = () => {
+    exportToExcel({
+      filename: `รายการใบแจ้งหนี้_${selectedDeptName !== "ทั้งหมด" ? selectedDeptName : "รวม"}`,
+      sheetName: "ใบแจ้งหนี้",
+      data: sortedData,
+      columns: [
+        { header: "ลำดับ", transform: (_, i) => i + 1, width: 8 },
+        { header: "รหัสรายงาน", key: "billCode", width: 18 },
+        { header: "หน่วยงาน", transform: (b) => b.departmentName || b.departmentShortName || "-", width: 28 },
+        { header: "หน่วยเบิกจ่าย", transform: (b) => b.depositUnitName || "-", width: 26 },
+        { header: "ประเภทสาธารณูปโภค", key: "utilityType", width: 20 },
+        { header: "ผู้ให้บริการ", key: "provider", width: 18 },
+        { header: "หมายเลขผู้ใช้/เครื่องวัด", key: "serviceNumber", width: 22 },
+        { header: "เลขที่ใบแจ้งหนี้", key: "invoiceNumber", width: 18 },
+        {
+          header: "รอบบิล",
+          transform: (b) =>
+            b.billingMonth && b.billingYear
+              ? `${THAI_MONTHS[b.billingMonth - 1]} ${b.billingYear + 543}`
+              : "-",
+          width: 18,
+        },
+        {
+          header: "ยอดตามใบแจ้งหนี้ (บาท)",
+          transform: (b) =>
+            b.invoiceAmount !== undefined && b.invoiceAmount !== null
+              ? Number(b.invoiceAmount)
+              : "-",
+          width: 22,
+        },
+        {
+          header: "ยอดเบิกจ่ายจริง (บาท)",
+          transform: (b) => (b.paidAmount ? parseFloat(b.paidAmount) : "-"),
+          width: 22,
+        },
+        {
+          header: "สถานะใบแจ้งหนี้",
+          transform: (b) =>
+            b.invoiceStatus === "NOT_RECEIVED" ? "ยังไม่ได้รับใบแจ้งหนี้" : "ได้รับแล้ว",
+          width: 20,
+        },
+        {
+          header: "สถานะการเบิกจ่าย",
+          transform: (b) => {
+            if (b.invoiceStatus === "NOT_RECEIVED") return "ยังไม่ได้รับใบแจ้งหนี้";
+            if (b.paymentStatus === "PAID") {
+              return b.attachmentReceipt && b.attachmentReceipt.trim() !== ""
+                ? "ได้ใบเสร็จแล้ว"
+                : "เบิกจ่ายแล้ว";
+            }
+            return "ยังไม่ได้เบิกจ่าย";
+          },
+          width: 20,
+        },
+        { header: "เลขที่เอกสารเบิกจ่าย", key: "paymentDocNumber", width: 20 },
+        {
+          header: "วันที่ลงรับ",
+          transform: (b) =>
+            b.receivedDate
+              ? format(new Date(b.receivedDate), "dd/MM/yyyy", { locale: th })
+              : "-",
+          width: 16,
+        },
+        {
+          header: "วันที่จ่ายเงิน",
+          transform: (b) =>
+            b.paymentDate
+              ? format(new Date(b.paymentDate), "dd/MM/yyyy", { locale: th })
+              : "-",
+          width: 16,
+        },
+        {
+          header: "สถานะการตรวจสอบ",
+          transform: (b) =>
+            b.auditStatus === "NORMAL"
+              ? "ปกติ"
+              : b.auditStatus === "PENDING_CORRECTION"
+                ? "รอการแก้ไข"
+                : b.auditStatus === "PENDING_RECHECK"
+                  ? "รอตรวจสอบใหม่"
+                  : b.auditStatus === "CORRECTED"
+                    ? "แก้ไขแล้ว"
+                    : b.auditStatus || "-",
+          width: 18,
+        },
+        {
+          header: "ข้อสังเกตความผิดปกติ",
+          transform: (b) => {
+            const issues = getAuditIssueTexts(b);
+            return issues.length > 0 ? issues.join(", ") : "-";
+          },
+          width: 32,
+        },
+        {
+          header: "การตรวจรับรอง",
+          transform: (b) => (b.isReviewed ? "ตรวจสอบแล้ว" : "ยังไม่ได้ตรวจสอบ"),
+          width: 16,
+        },
+        { header: "ผู้ตรวจรับรอง", key: "reviewedBy", width: 20 },
+        {
+          header: "วันที่ตรวจรับรอง",
+          transform: (b) =>
+            b.reviewedAt
+              ? format(new Date(b.reviewedAt), "dd/MM/yyyy HH:mm", { locale: th })
+              : "-",
+          width: 20,
+        },
+      ],
+    });
+  };
+
   return (
     <div className="space-y-4">
-      {/* Apple-style Filter Toolbar */}
-      <div className="p-4 rounded-2xl bg-card/85 dark:bg-card/70 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] shadow-xs flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
-        <div className="relative flex-1 min-w-[240px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="ค้นหารหัสรายงาน, หน่วยงาน, รหัสเครื่องวัด, เลขที่ใบแจ้งหนี้..."
-            className="pl-9 h-9.5 rounded-xl bg-background/60"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* Apple-style Filter Toolbar (semantic <search> landmark) */}
+      <search
+        aria-label="ค้นหาและกรองรายการค่าใช้จ่าย"
+        className="p-4 rounded-2xl bg-card/85 dark:bg-card/70 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] shadow-xs flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between"
+      >
+        <div className="flex flex-1 flex-wrap sm:flex-nowrap items-center gap-2 min-w-[240px]">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              placeholder={
+                aiSearchMode
+                  ? "ค้นหารหัสรายงาน หรือพิมพ์ประโยค AI เช่น บิลค่าไฟที่ยังไม่จ่ายภาคใต้..."
+                  : "ค้นหารหัสรายงาน, หน่วยงาน, รหัสเครื่องวัด, เลขที่ใบแจ้งหนี้..."
+              }
+              enterKeyHint={aiSearchMode ? "search" : undefined}
+              className={cn(
+                "pl-9 pr-8 h-9.5 rounded-xl bg-background/60",
+                aiSearchMode &&
+                  "border-primary/40 focus-visible:ring-primary/30",
+              )}
+              value={searchTerm}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSearchTerm(next);
+                if (aiSearchResult && next.trim() !== aiSearchResult.query) {
+                  setAISearchResult(null);
+                  setAISearchError(null);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (
+                  aiSearchMode &&
+                  e.key === "Enter" &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  void runAISearch(searchTerm);
+                }
+              }}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  aiAbortRef.current?.abort();
+                  setSearchTerm("");
+                  setAISearchResult(null);
+                  setAISearchError(null);
+                  setAISearchLoading(false);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/80 transition-colors cursor-pointer"
+                title="ล้างข้อความค้นหา"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            variant={aiSearchMode ? "default" : "outline"}
+            size="sm"
+            aria-pressed={aiSearchMode}
+            onClick={() => {
+              if (aiSearchMode) {
+                aiAbortRef.current?.abort();
+                setAISearchMode(false);
+                setAISearchLoading(false);
+                setAISearchError(null);
+                setAISearchResult(null);
+              } else {
+                setAISearchMode(true);
+                if (searchTerm.trim()) {
+                  void runAISearch(searchTerm);
+                }
+              }
+            }}
+            className="h-9.5 rounded-xl text-xs gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Sparkles className="size-3.5" />
+            <span>ค้นหาอัจฉริยะ (AI)</span>
+          </Button>
+
+          {aiSearchMode && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!searchTerm.trim() || aiSearchLoading}
+              onClick={() => void runAISearch(searchTerm)}
+              className="h-9.5 rounded-xl text-xs shrink-0 cursor-pointer"
+            >
+              {aiSearchLoading ? "กำลังค้นหา..." : "ค้นหาด้วย AI"}
+            </Button>
+          )}
         </div>
+
+        {departmentFilter !== "all" && (
+          <Badge
+            variant="secondary"
+            className="gap-1.5 px-3 py-1.5 text-xs bg-primary/10 text-primary border border-primary/20 shrink-0 self-start lg:self-center"
+          >
+            <Building2 className="size-3.5" />
+            <span>กรองตามหน่วยงาน: {selectedDeptName}</span>
+            <button
+              type="button"
+              onClick={() => setDepartmentFilter("all")}
+              className="ml-1 hover:text-destructive cursor-pointer inline-flex items-center"
+              title="ล้างตัวกรองหน่วยงาน"
+            >
+              <X className="size-3" />
+            </button>
+          </Badge>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -468,20 +979,26 @@ export function BillsTable({
               <SelectValue placeholder="สถานะ">
                 {statusFilter === "ทุกสถานะ"
                   ? "ทุกสถานะ"
-                  : statusFilter === "NOT_RECEIVED"
-                    ? "ยังไม่ได้รับใบแจ้งหนี้"
-                    : statusFilter === "PENDING"
-                      ? "ยังไม่ได้เบิกจ่าย"
-                      : statusFilter === "PAID"
-                        ? "เบิกจ่ายแล้ว"
-                        : statusFilter}
+                  : statusFilter === "OVERDUE"
+                    ? "ค้างชำระ"
+                    : statusFilter === "NOT_RECEIVED"
+                      ? "ยังไม่ได้รับใบแจ้งหนี้"
+                      : statusFilter === "PENDING"
+                        ? "ยังไม่ได้เบิกจ่าย"
+                        : statusFilter === "PAID"
+                          ? "เบิกจ่ายแล้ว"
+                          : statusFilter === "RECEIPT_RECEIVED"
+                            ? "ได้ใบเสร็จแล้ว"
+                            : statusFilter}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ทุกสถานะ">ทุกสถานะ</SelectItem>
+              <SelectItem value="OVERDUE">ค้างชำระ</SelectItem>
               <SelectItem value="NOT_RECEIVED">ยังไม่ได้รับใบแจ้งหนี้</SelectItem>
               <SelectItem value="PENDING">ยังไม่ได้เบิกจ่าย</SelectItem>
               <SelectItem value="PAID">เบิกจ่ายแล้ว</SelectItem>
+              <SelectItem value="RECEIPT_RECEIVED">ได้ใบเสร็จแล้ว</SelectItem>
             </SelectContent>
           </Select>
 
@@ -489,14 +1006,16 @@ export function BillsTable({
             value={anomalyFilter}
             onValueChange={(v) => v && setAnomalyFilter(v)}
           >
-            <SelectTrigger className="w-[150px] h-9.5 rounded-xl text-xs">
-              <SelectValue placeholder="ความผิดปกติ">
-                {anomalyFilter === "ทั้งหมด" ? "สถานะความผิดปกติ" : anomalyFilter}
+            <SelectTrigger className="w-[155px] h-9.5 rounded-xl text-xs">
+              <SelectValue placeholder="ความคลาดเคลื่อน">
+                {anomalyFilter === "ทั้งหมด"
+                  ? "สถานะความคลาดเคลื่อน"
+                  : anomalyFilter}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ทั้งหมด">ทั้งหมด (ความผิดปกติ)</SelectItem>
-              <SelectItem value="พบความผิดปกติ">พบความผิดปกติ</SelectItem>
+              <SelectItem value="ทั้งหมด">ทั้งหมด (ความคลาดเคลื่อน)</SelectItem>
+              <SelectItem value="พบความคลาดเคลื่อน">พบความคลาดเคลื่อน</SelectItem>
               <SelectItem value="ปกติ, แก้ไขแล้ว">ปกติ, แก้ไขแล้ว</SelectItem>
             </SelectContent>
           </Select>
@@ -516,40 +1035,199 @@ export function BillsTable({
               <SelectItem value="ตรวจสอบแล้ว">ตรวจสอบแล้ว</SelectItem>
             </SelectContent>
           </Select>
+
+          <ExportExcelButton
+            onExport={handleExportExcel}
+            disabled={sortedData.length === 0}
+          />
+
+          <Button
+            type="button"
+            variant={isFiltered ? "outline" : "ghost"}
+            size="sm"
+            onClick={handleResetFilters}
+            disabled={!isFiltered}
+            className={cn(
+              "h-9.5 rounded-xl text-xs gap-1.5 px-3 transition-all",
+              isFiltered
+                ? "border-rose-200/90 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:border-rose-300 dark:hover:border-rose-800 shadow-xs cursor-pointer font-medium"
+                : "text-muted-foreground/40 hover:bg-transparent cursor-not-allowed border-dashed border-border/40",
+            )}
+            title="ล้างค่าตัวกรองเป็นค่าเริ่มต้น"
+          >
+            <RotateCcw className="size-3.5" />
+            ล้างตัวกรอง
+          </Button>
         </div>
-      </div>
+      </search>
+
+      {aiSearchLoading && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/[0.04] p-3 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-primary flex items-center gap-1.5">
+              <Sparkles className="size-3.5" />
+              กำลังค้นหาด้วย AI Hybrid Search (Semantic + Intent)...
+            </span>
+          </div>
+          <progress aria-label="กำลังค้นหาด้วย AI" className="ai-progress" />
+        </div>
+      )}
+
+      {aiSearchError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center justify-between gap-2"
+        >
+          <span>{aiSearchError}</span>
+          {searchTerm.trim() && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void runAISearch(searchTerm)}
+              className="h-7 rounded-lg text-xs cursor-pointer"
+            >
+              ลองอีกครั้ง
+            </Button>
+          )}
+        </div>
+      )}
+
+      {aiSearchResult && !aiSearchLoading && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-2xl border border-primary/25 bg-primary/[0.04] px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="bg-primary/15 text-primary border-primary/20 font-medium text-[11px]"
+            >
+              <Sparkles className="size-3 mr-1" />
+              {aiSearchResult.mode === "hybrid"
+                ? "AI Hybrid Search"
+                : "Smart Intent Search"}
+            </Badge>
+            <span className="text-foreground font-medium">
+              พบ {filteredData.length} รายการสำหรับ “{aiSearchResult.query}”
+            </span>
+            <span className="text-muted-foreground">
+              (สแกน {aiSearchResult.totalScanned} รายการ • {aiSearchResult.tookMs} ms)
+            </span>
+            {aiSearchResult.warning && (
+              <span className="text-amber-700 dark:text-amber-300">
+                • {aiSearchResult.warning}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAISearchResult(null);
+              setAISearchError(null);
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground underline cursor-pointer"
+          >
+            แสดงทั้งหมดตามคำค้นปกติ
+          </button>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-card/90 dark:bg-card/70 backdrop-blur-xl shadow-xs overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[220px]">หน่วยงาน / ประเภท</TableHead>
-              <TableHead>รหัสรายงาน / เครื่องวัด</TableHead>
-              <TableHead>รอบบิล</TableHead>
-              <TableHead className="text-right">ยอดชำระ / เบิกจ่าย</TableHead>
-              <TableHead className="text-center">สถานะการเบิกจ่าย</TableHead>
+              <SortableHeader
+                className="w-[220px]"
+                sortKey="department"
+                currentSortKey={sortKey}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              >
+                หน่วยงาน / ประเภท
+              </SortableHeader>
+              <SortableHeader
+                sortKey="billCode"
+                currentSortKey={sortKey}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              >
+                รหัสรายงาน / เครื่องวัด
+              </SortableHeader>
+              <SortableHeader
+                sortKey="billingPeriod"
+                currentSortKey={sortKey}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              >
+                รอบบิล
+              </SortableHeader>
+              <SortableHeader
+                align="right"
+                sortKey="amount"
+                currentSortKey={sortKey}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              >
+                ยอดชำระ / เบิกจ่าย
+              </SortableHeader>
+              <SortableHeader
+                align="center"
+                sortKey="paymentStatus"
+                currentSortKey={sortKey}
+                currentSortOrder={sortOrder}
+                onSort={handleSort}
+              >
+                สถานะการเบิกจ่าย
+              </SortableHeader>
               {showAuditStatus && (
-                <TableHead className="text-center">สถานะตรวจสอบ</TableHead>
+                <SortableHeader
+                  align="center"
+                  sortKey="auditStatus"
+                  currentSortKey={sortKey}
+                  currentSortOrder={sortOrder}
+                  onSort={handleSort}
+                >
+                  สถานะตรวจสอบ
+                </SortableHeader>
               )}
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[80px] text-center">จัดการ</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredData.length === 0 && (
+            {sortedData.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={showAuditStatus ? 7 : 6}
-                  className="text-center h-32 text-muted-foreground text-sm"
+                  className="text-center h-36 text-muted-foreground text-sm"
                 >
-                  ไม่มีข้อมูลค่าใช้จ่ายที่ตรงกับเงื่อนไข
+                  <div className="flex flex-col items-center justify-center gap-2 py-4">
+                    <p>ไม่มีข้อมูลค่าใช้จ่ายที่ตรงกับเงื่อนไข</p>
+                    {isFiltered && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResetFilters}
+                        className="h-8 rounded-xl text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer border-border/80"
+                      >
+                        <RotateCcw className="size-3" />
+                        ล้างตัวกรองทั้งหมด
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             )}
-            {filteredData.map((bill) => (
+            {sortedData.map((bill) => (
               <TableRow
                 key={bill.id}
-                className="group transition-colors hover:bg-muted/40 cursor-pointer"
-                onClick={() => handleRowClick(bill)}
+                className={cn(
+                  "group transition-colors hover:bg-muted/40",
+                  !disableDrawer && "cursor-pointer"
+                )}
+                onClick={disableDrawer ? undefined : () => handleRowClick(bill)}
               >
                 <TableCell>
                   <div className="flex flex-col">
@@ -574,6 +1252,20 @@ export function BillsTable({
                         </span>
                       )}
                     </div>
+                    {aiHitsMap?.get(bill.id)?.matchReasons?.length ? (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {[...new Set(aiHitsMap.get(bill.id)!.matchReasons)]
+                          .slice(0, 3)
+                          .map((reason) => (
+                            <span
+                              key={`${bill.id}-reason-${reason}`}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-medium"
+                            >
+                              {reason}
+                            </span>
+                          ))}
+                      </div>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -639,15 +1331,25 @@ export function BillsTable({
                         bill.invoiceStatus === "NOT_RECEIVED"
                           ? "outline"
                           : bill.paymentStatus === "PAID"
-                            ? "success"
+                            ? (bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "")
+                              ? "success"
+                              : "default"
                             : "warning"
                       }
-                      className="text-[11px] font-medium"
+                      className={cn(
+                        "text-[11px] font-medium",
+                        bill.paymentStatus === "PAID" &&
+                          ((bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "")
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            : "bg-blue-600 hover:bg-blue-700 text-white")
+                      )}
                     >
                       {bill.invoiceStatus === "NOT_RECEIVED"
                         ? "ยังไม่ได้รับใบแจ้งหนี้"
                         : bill.paymentStatus === "PAID"
-                          ? "เบิกจ่ายแล้ว"
+                          ? (bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "")
+                            ? "ได้ใบเสร็จแล้ว"
+                            : "เบิกจ่ายแล้ว"
                           : "ยังไม่ได้เบิกจ่าย"}
                     </Badge>
                     {(bill.invoiceStatus === "NOT_RECEIVED" ||
@@ -670,7 +1372,45 @@ export function BillsTable({
                 {showAuditStatus && (
                   <TableCell className="text-center align-top pt-4">
                     <div className="flex flex-col items-center justify-center gap-1.5">
-                      {bill.auditStatus === "PENDING_CORRECTION" ? (
+                      {bill.auditStatus === "PENDING_RECHECK" ? (
+                        <>
+                          <Badge
+                            className="whitespace-nowrap text-[11px] bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 font-medium"
+                          >
+                            รอตรวจสอบใหม่
+                          </Badge>
+                          {getAuditIssueTexts(bill).length > 0 && (
+                            <div className="flex flex-col text-[10px] text-blue-800 dark:text-blue-300 items-start text-left bg-blue-50/80 dark:bg-blue-950/40 p-2 rounded-xl w-full max-w-[140px] leading-tight border border-blue-200/60 dark:border-blue-800/40">
+                              {getAuditIssueTexts(bill).map((issue, idx) => {
+                                const isManualIssue =
+                                  bill.isManualAnomaly &&
+                                  issue === (bill.manualAnomalyReason || "ระบุว่าผิดปกติ");
+                                if (isManualIssue && bill.manualAnomalyDetail) {
+                                  return (
+                                    <TooltipProvider key={idx}>
+                                      <Tooltip>
+                                        <TooltipTrigger render={<span className="cursor-help underline decoration-dotted underline-offset-2" />}>
+                                          • {issue}
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-xs text-xs p-3 text-left">
+                                          <p className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                                            <Flag className="size-3.5 shrink-0" />
+                                            {issue}
+                                          </p>
+                                          <p className="text-foreground whitespace-pre-line mt-1.5 leading-relaxed text-xs">
+                                            {bill.manualAnomalyDetail}
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                }
+                                return <span key={idx}>• {issue}</span>;
+                              })}
+                            </div>
+                          )}
+                        </>
+                      ) : bill.auditStatus === "PENDING_CORRECTION" ? (
                         <>
                           <Badge
                             variant="warning"
@@ -680,9 +1420,32 @@ export function BillsTable({
                           </Badge>
                           {getAuditIssueTexts(bill).length > 0 && (
                             <div className="flex flex-col text-[10px] text-amber-800 dark:text-amber-300 items-start text-left bg-amber-50/80 dark:bg-amber-950/40 p-2 rounded-xl w-full max-w-[140px] leading-tight border border-amber-200/60 dark:border-amber-800/40">
-                              {getAuditIssueTexts(bill).map((issue, idx) => (
-                                <span key={idx}>• {issue}</span>
-                              ))}
+                              {getAuditIssueTexts(bill).map((issue, idx) => {
+                                const isManualIssue =
+                                  bill.isManualAnomaly &&
+                                  issue === (bill.manualAnomalyReason || "ระบุว่าผิดปกติ");
+                                if (isManualIssue && bill.manualAnomalyDetail) {
+                                  return (
+                                    <TooltipProvider key={idx}>
+                                      <Tooltip>
+                                        <TooltipTrigger render={<span className="cursor-help underline decoration-dotted underline-offset-2" />}>
+                                          • {issue}
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-xs text-xs p-3 text-left">
+                                          <p className="font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                                            <Flag className="size-3.5 shrink-0" />
+                                            {issue}
+                                          </p>
+                                          <p className="text-foreground whitespace-pre-line mt-1.5 leading-relaxed text-xs">
+                                            {bill.manualAnomalyDetail}
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  );
+                                }
+                                return <span key={idx}>• {issue}</span>;
+                              })}
                             </div>
                           )}
                         </>
@@ -711,7 +1474,7 @@ export function BillsTable({
                     </div>
                   </TableCell>
                 )}
-                <TableCell onClick={(e) => e.stopPropagation()}>
+                <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -734,61 +1497,6 @@ export function BillsTable({
                         >
                           <Eye className="mr-2 h-4 w-4" /> ดูรายละเอียด
                         </DropdownMenuItem>
-                        {[
-                          "admin",
-                          "auditor",
-                          "strategy_finance",
-                          "central_staff",
-                        ].includes(userRole || "") &&
-                          (bill.isReviewed ? (
-                            <DropdownMenuItem
-                              className="cursor-pointer text-amber-600 focus:text-amber-600"
-                              onClick={() => {
-                                startTransition(async () => {
-                                  const res = await markBillAsReviewed(
-                                    bill.id,
-                                    false,
-                                  );
-                                  if (res.success) {
-                                    toast.success(
-                                      "ยกเลิกการตรวจรับรองเรียบร้อยแล้ว",
-                                    );
-                                    router.refresh();
-                                  } else {
-                                    toast.error(
-                                      res.error || "ไม่สามารถยกเลิกได้",
-                                    );
-                                  }
-                                });
-                              }}
-                            >
-                              <Clock className="mr-2 h-4 w-4" /> ยกเลิกการตรวจรับรอง
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              className="cursor-pointer text-emerald-600 focus:text-emerald-600"
-                              onClick={() => {
-                                startTransition(async () => {
-                                  const res = await markBillAsReviewed(
-                                    bill.id,
-                                    true,
-                                  );
-                                  if (res.success) {
-                                    toast.success(
-                                      "บันทึกการตรวจสอบเรียบร้อยแล้ว",
-                                    );
-                                    router.refresh();
-                                  } else {
-                                    toast.error(
-                                      res.error || "ไม่สามารถบันทึกได้",
-                                    );
-                                  }
-                                });
-                              }}
-                            >
-                              <CheckCircle2 className="mr-2 h-4 w-4" /> ตรวจเรียบร้อยแล้ว
-                            </DropdownMenuItem>
-                          ))}
                         <DropdownMenuItem
                           className="cursor-pointer"
                           render={<Link href={`/bills/${bill.id}/edit`} />}
@@ -921,12 +1629,12 @@ export function BillsTable({
                       </div>
                       <div className="grid gap-1">
                         <p className="text-muted-foreground text-sm font-medium">
-                          ประเภทการเบิกจ่าย
+                          ประเภทหน่วยงาน
                         </p>
                         <p className="bg-muted/50 p-2 rounded-md">
                           {billToView.isPendingBillOnly
-                            ? "หน่วยงานฝากเบิก"
-                            : "หน่วยงานที่เบิกจ่าย"}
+                            ? "หน่วยฝากเบิก"
+                            : "หน่วยเบิกจ่าย"}
                         </p>
                       </div>
                       <div className="grid gap-1">
@@ -997,14 +1705,17 @@ export function BillsTable({
                           {billToView.provider || "-"}
                         </p>
                       </div>
-                      <div className="grid gap-1">
-                        <p className="text-muted-foreground text-sm font-medium">
-                          ที่ตั้ง
-                        </p>
-                        <p className="bg-muted/50 p-2 rounded-md">
-                          {billToView.locationType || "-"}
-                        </p>
-                      </div>
+                      {(billToView.utilityType === "ค่าไฟฟ้า" ||
+                        billToView.utilityType === "ค่าประปา&น้ำบาดาล") && (
+                        <div className="grid gap-1">
+                          <p className="text-muted-foreground text-sm font-medium">
+                            ที่ตั้ง
+                          </p>
+                          <p className="bg-muted/50 p-2 rounded-md">
+                            {billToView.locationType || "-"}
+                          </p>
+                        </div>
+                      )}
                       <div className="grid gap-1">
                         <p className="text-muted-foreground text-sm font-medium">
                           รอบบิลประจำเดือน
@@ -1084,7 +1795,7 @@ export function BillsTable({
                           </div>
                           <div className="grid gap-1">
                             <p className="text-muted-foreground text-sm font-medium">
-                              หน่วยฝากเบิกส่งเอกสาร
+                              วันที่หน่วยฝากเบิกส่งเอกสาร
                             </p>
                             <p className="bg-muted/50 p-2 rounded-md">
                               {billToView.sentToDisbursingDate
@@ -1097,7 +1808,7 @@ export function BillsTable({
                           </div>
                           <div className="grid gap-1">
                             <p className="text-muted-foreground text-sm font-medium">
-                              วันที่หน่วยเบิกจ่ายลงรับใบแจ้งหนี้
+                              วันที่หน่วยเบิกจ่ายลงรับใบสำคัญ
                             </p>
                             <p className="bg-muted/50 p-2 rounded-md">
                               {billToView.disbursingReceivedDate
@@ -1438,7 +2149,40 @@ export function BillsTable({
                         <p className="text-muted-foreground text-sm font-medium">
                           สถานะตรวจสอบ (กตน.)
                         </p>
-                        {billToView.auditStatus === "PENDING_CORRECTION" ? (
+                        {billToView.auditStatus === "PENDING_RECHECK" ? (
+                          <div className="flex flex-col gap-2 mt-1">
+                            <Badge
+                              variant="outline"
+                              className="bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-300 w-fit text-sm font-medium"
+                            >
+                              รอตรวจสอบใหม่
+                            </Badge>
+                            <div className="bg-blue-50/70 dark:bg-blue-950/30 p-3 rounded-md border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 mt-1">
+                              <p className="font-semibold text-sm mb-1.5 opacity-90">
+                                ข้อสังเกตความผิดปกติที่หน่วยงานได้แก้ไขแล้ว:
+                              </p>
+                              <ul className="list-disc pl-4 text-sm space-y-1">
+                                {getAuditIssueTexts(billToView).length > 0 ? (
+                                  getAuditIssueTexts(billToView).map(
+                                    (issue, idx) => <li key={idx}>{issue}</li>,
+                                  )
+                                ) : (
+                                  <li>ไม่ระบุสาเหตุ</li>
+                                )}
+                              </ul>
+                              {billToView.manualAnomalyDetail && (
+                                <p className="text-xs text-muted-foreground mt-2 border-t pt-1.5 whitespace-pre-line">
+                                  {billToView.manualAnomalyDetail}
+                                </p>
+                              )}
+                            </div>
+                            {billToView.isReviewed && (
+                              <div className="flex items-center text-xs text-emerald-600 font-medium mt-1">
+                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> ตรวจสอบแล้ว
+                              </div>
+                            )}
+                          </div>
+                        ) : billToView.auditStatus === "PENDING_CORRECTION" ? (
                           <div className="flex flex-col gap-2 mt-1">
                             <Badge
                               variant="outline"
@@ -1460,6 +2204,21 @@ export function BillsTable({
                                 )}
                               </ul>
                             </div>
+                            {billToView.isReviewed && (
+                              <div className="flex items-center text-xs text-emerald-600 font-medium mt-1">
+                                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />{" "}
+                                ตรวจสอบแล้ว
+                                {billToView.reviewedBy
+                                  ? ` โดย ${billToView.reviewedBy}`
+                                  : ""}
+                                {billToView.reviewedAt &&
+                                  ` เมื่อ ${format(
+                                    new Date(billToView.reviewedAt),
+                                    "dd MMM yy HH:mm",
+                                    { locale: th },
+                                  )}`}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="flex flex-col gap-1 items-start mt-1">
@@ -1481,13 +2240,16 @@ export function BillsTable({
                             {billToView.isReviewed && (
                               <div className="flex items-center text-xs text-emerald-600 font-medium mt-1">
                                 <CheckCircle2 className="h-3.5 w-3.5 mr-1" />{" "}
-                                ตรวจสอบแล้วเมื่อ{" "}
+                                ตรวจสอบแล้ว
+                                {billToView.reviewedBy
+                                  ? ` โดย ${billToView.reviewedBy}`
+                                  : ""}
                                 {billToView.reviewedAt &&
-                                  format(
+                                  ` เมื่อ ${format(
                                     new Date(billToView.reviewedAt),
                                     "dd MMM yy HH:mm",
                                     { locale: th },
-                                  )}
+                                  )}`}
                               </div>
                             )}
                           </div>
@@ -1572,12 +2334,7 @@ export function BillsTable({
             </Button>
 
             {billToView &&
-              [
-                "admin",
-                "auditor",
-                "strategy_finance",
-                "central_staff",
-              ].includes(userRole || "") &&
+              canReview &&
               (billToView.isReviewed ? (
                 <Button
                   variant="outline"
@@ -1594,17 +2351,12 @@ export function BillsTable({
                   disabled={isPending}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white border-none"
                 >
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> ตรวจเรียบร้อยแล้ว
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> ตรวจสอบแล้ว
                 </Button>
               ))}
 
             {billToView &&
-              [
-                "admin",
-                "auditor",
-                "strategy_finance",
-                "central_staff",
-              ].includes(userRole || "") &&
+              canFlag &&
               (billToView.isManualAnomaly ? (
                 <Button
                   variant="outline"
@@ -1617,7 +2369,11 @@ export function BillsTable({
               ) : (
                 <Button
                   variant="destructive"
-                  onClick={() => setBillToFlag(billToView)}
+                  onClick={() => {
+                    setBillToFlag(billToView);
+                    setFlagReason(billToView?.manualAnomalyReason || "");
+                    setFlagDetail(billToView?.manualAnomalyDetail || "");
+                  }}
                   disabled={isPending}
                   className="bg-red-600 hover:bg-red-700 text-white"
                 >
@@ -1642,6 +2398,7 @@ export function BillsTable({
           if (!open) {
             setBillToFlag(null);
             setFlagReason("");
+            setFlagDetail("");
           }
         }}
       >
@@ -1651,16 +2408,34 @@ export function BillsTable({
               <Flag className="h-5 w-5" /> ระบุว่ารายการผิดปกติ
             </DialogTitle>
             <DialogDescription>
-              กรุณาระบุเหตุผลที่รายการนี้ผิดปกติ เพื่อให้หน่วยงานตรวจสอบและแก้ไข
+              กรุณาระบุเหตุผลและคำแนะนำ เพื่อให้หน่วยงานตรวจสอบและดำเนินการแก้ไข
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="ระบุเหตุผล เช่น เอกสารไม่ครบถ้วน, ยอดเงินไม่ถูกต้อง..."
-              value={flagReason}
-              onChange={(e) => setFlagReason(e.target.value)}
-              disabled={isPending}
-            />
+          <div className="py-4 space-y-3.5">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">
+                หัวข้อ / ข้อสังเกตหลัก <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                placeholder="เช่น เอกสารไม่ครบถ้วน, ยอดเงินไม่ถูกต้อง..."
+                value={flagReason}
+                onChange={(e) => setFlagReason(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">
+                รายละเอียดเพิ่มเติม / คำแนะนำในการแก้ไข
+              </Label>
+              <Textarea
+                rows={4}
+                placeholder="ระบุรายละเอียดเพิ่มเติม เช่น เอกสารส่วนใดหายไป หรือแนวทางแก้ไขที่ต้องการ..."
+                value={flagDetail}
+                onChange={(e) => setFlagDetail(e.target.value)}
+                disabled={isPending}
+                className="resize-none text-xs"
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             <Button
@@ -1668,6 +2443,7 @@ export function BillsTable({
               onClick={() => {
                 setBillToFlag(null);
                 setFlagReason("");
+                setFlagDetail("");
               }}
               disabled={isPending}
             >
@@ -1684,32 +2460,46 @@ export function BillsTable({
         </DialogContent>
       </Dialog>
 
-      <BillQuickViewDrawer
-        bill={billForDrawer}
-        open={isDrawerOpen}
-        onOpenChange={setIsDrawerOpen}
-        userRole={userRole}
-        onReview={() => {
-          if (!billForDrawer) return;
-          startTransition(async () => {
-            const nextState = !billForDrawer.isReviewed;
-            const res = await markBillAsReviewed(billForDrawer.id, nextState);
-            if (res.success) {
-              toast.success(nextState ? "บันทึกการตรวจสอบเรียบร้อยแล้ว" : "ยกเลิกการตรวจรับรองเรียบร้อยแล้ว");
-              setIsDrawerOpen(false);
-              router.refresh();
-            } else {
-              toast.error(res.error || "ไม่สามารถทำรายการได้");
-            }
-          });
-        }}
-        onFlag={() => {
-          if (!billForDrawer) return;
-          setBillToFlag(billForDrawer);
-          setIsDrawerOpen(false);
-        }}
-        isPending={isPending}
-      />
+      {!disableDrawer && (
+        <BillQuickViewDrawer
+          bill={billForDrawer}
+          open={isDrawerOpen}
+          onOpenChange={setIsDrawerOpen}
+          userRole={userRole}
+          userPermissions={userPermissions}
+          pagePath={pagePath}
+          onReview={
+            canReview
+              ? () => {
+                  if (!billForDrawer) return;
+                  startTransition(async () => {
+                    const nextState = !billForDrawer.isReviewed;
+                    const res = await markBillAsReviewed(billForDrawer.id, nextState);
+                    if (res.success) {
+                      toast.success(nextState ? "บันทึกการตรวจสอบเรียบร้อยแล้ว" : "ยกเลิกการตรวจรับรองเรียบร้อยแล้ว");
+                      setIsDrawerOpen(false);
+                      router.refresh();
+                    } else {
+                      toast.error(res.error || "ไม่สามารถทำรายการได้");
+                    }
+                  });
+                }
+              : undefined
+          }
+          onFlag={
+            canFlag
+              ? () => {
+                  if (!billForDrawer) return;
+                  setBillToFlag(billForDrawer);
+                  setFlagReason(billForDrawer.manualAnomalyReason || "");
+                  setFlagDetail(billForDrawer.manualAnomalyDetail || "");
+                  setIsDrawerOpen(false);
+                }
+              : undefined
+          }
+          isPending={isPending}
+        />
+      )}
     </div>
   );
 }

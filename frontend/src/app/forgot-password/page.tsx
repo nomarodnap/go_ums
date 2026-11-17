@@ -68,16 +68,15 @@ export default function ForgotPasswordPage() {
       <div className="relative w-full max-w-[420px]">
         <Card className="w-full rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur-2xl shadow-2xl p-2 sm:p-4">
         <CardHeader className="space-y-3 text-center pb-2">
-          <div className="mx-auto flex size-20 items-center justify-center rounded-2xl bg-white dark:bg-slate-900/90 p-2 shadow-sm border border-black/[0.06] dark:border-white/[0.1]">
+          <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-white dark:bg-slate-900/90 p-1 shadow-sm border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
             {success ? (
               <CheckCircle2 className="size-12 text-emerald-500" />
             ) : (
               <Image
                 src="/logo.png"
                 alt="ตราสัญลักษณ์กรมประมง"
-                width={70}
-                height={70}
-                style={{ width: "auto", height: "auto" }}
+                width={72}
+                height={72}
                 className="size-full object-contain"
                 priority
               />

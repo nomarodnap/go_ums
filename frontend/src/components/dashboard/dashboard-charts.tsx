@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CartesianGrid,
   XAxis,
@@ -25,7 +25,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Calendar, Maximize2, Minimize2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type TrendDataPoint = {
   month: string;
@@ -44,10 +53,10 @@ export type StatusDataPoint = {
 
 const trendConfig = {
   electricity: { label: "ค่าไฟฟ้า", color: "var(--chart-1)" },
-  water: { label: "ค่าน้ำประปา", color: "var(--chart-2)" },
+  water: { label: "ค่าประปา&น้ำบาดาล", color: "var(--chart-2)" },
   phone: { label: "ค่าโทรศัพท์", color: "var(--chart-3)" },
-  telecom: { label: "ค่าสื่อสารฯ", color: "var(--chart-4)" },
-  postal: { label: "ค่าไปรษณีย์", color: "var(--chart-5)" },
+  telecom: { label: "ค่าสื่อสาร&โทรคมนาคม", color: "var(--chart-4)" },
+  postal: { label: "ค่าบริการไปรษณีย์", color: "var(--chart-5)" },
 };
 
 const statusConfig = {
@@ -55,9 +64,30 @@ const statusConfig = {
   ค้างชำระ: { label: "ค้างชำระ", color: "var(--chart-3)" },
 };
 
-export function TrendChart({ data }: { data: TrendDataPoint[] }) {
-  const [months, setMonths] = useState("6");
+export const serviceStatusConfig = {
+  บันทึกเข้าระบบแล้ว: { label: "บันทึกเข้าระบบแล้ว", color: "var(--chart-1)" },
+  ยังไม่ได้บันทึกเข้าระบบ: { label: "ยังไม่ได้บันทึกเข้าระบบ", color: "var(--chart-3)" },
+};
+
+export function TrendChart({
+  data,
+  defaultMonths,
+  chartHeight = "h-[280px]",
+  onOpenFullscreen,
+}: {
+  data: TrendDataPoint[];
+  defaultMonths?: string;
+  chartHeight?: string;
+  onOpenFullscreen?: () => void;
+}) {
+  const [months, setMonths] = useState(defaultMonths || "6");
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (defaultMonths) {
+      setMonths(defaultMonths);
+    }
+  }, [defaultMonths]);
 
   const displayData = data.slice(-parseInt(months));
 
@@ -77,30 +107,45 @@ export function TrendChart({ data }: { data: TrendDataPoint[] }) {
           <Calendar className="size-3.5" />
           <span>แสดงข้อมูลย้อนหลัง</span>
         </div>
-        <Select
-          value={months}
-          onValueChange={(val) => {
-            if (val) setMonths(val);
-          }}
-        >
-          <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg">
-            <SelectValue placeholder="เลือกช่วงเวลา">
-              {months === "3"
-                ? "3 เดือนล่าสุด"
-                : months === "6"
-                  ? "6 เดือนล่าสุด"
-                  : "12 เดือนล่าสุด"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="3">3 เดือนล่าสุด</SelectItem>
-            <SelectItem value="6">6 เดือนล่าสุด</SelectItem>
-            <SelectItem value="12">12 เดือนล่าสุด</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            value={months}
+            onValueChange={(val) => {
+              if (val) setMonths(val);
+            }}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs rounded-lg">
+              <SelectValue placeholder="เลือกช่วงเวลา">
+                {months === "3"
+                  ? "3 เดือนล่าสุด"
+                  : months === "6"
+                    ? "6 เดือนล่าสุด"
+                    : "12 เดือนล่าสุด"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3">3 เดือนล่าสุด</SelectItem>
+              <SelectItem value="6">6 เดือนล่าสุด</SelectItem>
+              <SelectItem value="12">12 เดือนล่าสุด</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {onOpenFullscreen && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenFullscreen}
+              className="h-8 px-2 text-xs gap-1 rounded-lg border-black/[0.08] dark:border-white/[0.08] text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+              title="ดูแบบเต็มจอ (Full Screen)"
+            >
+              <Maximize2 className="size-3.5" />
+              <span className="hidden sm:inline">เต็มจอ</span>
+            </Button>
+          )}
+        </div>
       </div>
 
-      <ChartContainer config={trendConfig} className="h-[280px] w-full">
+      <ChartContainer config={trendConfig} className={cn("w-full aspect-auto", chartHeight)}>
         <AreaChart
           data={displayData}
           margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
@@ -219,9 +264,15 @@ export function TrendChart({ data }: { data: TrendDataPoint[] }) {
   );
 }
 
-export function StatusPieChart({ data }: { data: StatusDataPoint[] }) {
+export function StatusPieChart({
+  data,
+  config = statusConfig,
+}: {
+  data: StatusDataPoint[];
+  config?: any;
+}) {
   return (
-    <ChartContainer config={statusConfig} className="h-[250px] w-full">
+    <ChartContainer config={config} className="h-[250px] w-full">
       <PieChart>
         <Pie
           data={data}
@@ -241,5 +292,103 @@ export function StatusPieChart({ data }: { data: StatusDataPoint[] }) {
         <ChartLegend content={<ChartLegendContent />} className="flex-wrap pt-2" />
       </PieChart>
     </ChartContainer>
+  );
+}
+
+export function TrendFullscreenDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  data,
+  defaultMonths,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  data: TrendDataPoint[];
+  defaultMonths?: string;
+}) {
+  const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement
+        .requestFullscreen()
+        .then(() => {
+          setIsBrowserFullscreen(true);
+        })
+        .catch(() => {});
+    } else {
+      document
+        .exitFullscreen()
+        .then(() => {
+          setIsBrowserFullscreen(false);
+        })
+        .catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsBrowserFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[96vw] h-[92vh] max-h-[92vh] flex flex-col p-6 sm:p-8 rounded-3xl overflow-hidden border border-black/10 dark:border-white/10 shadow-2xl bg-background/95 dark:bg-background/95 backdrop-blur-2xl">
+        <DialogHeader className="pr-12">
+          <div className="flex items-center gap-2 flex-wrap">
+            <DialogTitle className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
+              {title}
+            </DialogTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleBrowserFullscreen}
+              className="h-7 px-2 text-xs gap-1.5 rounded-lg border-black/[0.08] dark:border-white/[0.08] text-muted-foreground hover:text-foreground hidden sm:inline-flex cursor-pointer"
+              title="เปิด/ปิดเต็มหน้าจอเบราว์เซอร์"
+            >
+              {isBrowserFullscreen ? (
+                <>
+                  <Minimize2 className="size-3" />
+                  <span>ย่อหน้าจอ</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="size-3" />
+                  <span>เต็มหน้าจอเบราว์เซอร์</span>
+                </>
+              )}
+            </Button>
+          </div>
+          {description && (
+            <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+              {description}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 pt-4 flex flex-col overflow-y-auto">
+          {data && data.length > 0 ? (
+            <TrendChart
+              data={data}
+              defaultMonths={defaultMonths}
+              chartHeight="h-[480px] sm:h-[540px] lg:h-[600px]"
+            />
+          ) : (
+            <div className="h-[400px] flex items-center justify-center text-muted-foreground text-sm">
+              ไม่มีข้อมูลเพียงพอสำหรับการแสดงกราฟ
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -8,11 +8,13 @@ import { Sparkles } from "lucide-react";
 interface DofGoldLogo3DProps {
   className?: string;
   size?: number;
+  onLoaded?: () => void;
 }
 
 export function DofGoldLogo3D({
   className = "",
   size = 180,
+  onLoaded,
 }: DofGoldLogo3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -36,18 +38,25 @@ export function DofGoldLogo3D({
     camera.position.set(0, 0, 250);
 
     // 3. Renderer with high performance & tone mapping
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: "high-performance",
-    });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.4;
-    rendererRef.current = renderer;
-
-    container.appendChild(renderer.domElement);
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.4;
+      rendererRef.current = renderer;
+      container.appendChild(renderer.domElement);
+    } catch (e) {
+      console.error("WebGL initialization error in 3D Logo:", e);
+      setIsLoaded(true);
+      onLoaded?.();
+      return;
+    }
 
     // 4. Technique 2: High-Contrast Studio Environment for Dynamic Rotating Reflections
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
@@ -221,9 +230,14 @@ export function DofGoldLogo3D({
         scene.add(pivot);
         modelGroupRef.current = pivot;
         setIsLoaded(true);
+        onLoaded?.();
       },
       undefined,
-      (err) => console.error("Error loading vector.svg in 3D Logo:", err)
+      (err) => {
+        console.error("Error loading vector.svg in 3D Logo:", err);
+        setIsLoaded(true);
+        onLoaded?.();
+      }
     );
 
     // 8. Animation Loop

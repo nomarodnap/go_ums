@@ -4,15 +4,30 @@
  * ระบบรายงานค่าสาธารณูปโภค กรมประมง API
  * OpenAPI spec version: 2.0.0
  */
+import type { BillTrackingItemDTOAuditIssues } from './billTrackingItemDTOAuditIssues';
 
 export interface BillTrackingItemDTO {
   amount: number;
+  attachmentReceipt?: string;
+  auditIssues?: BillTrackingItemDTOAuditIssues;
+  auditStatus?: string;
+  billCode?: string;
   billId?: string;
   departmentId: string;
   departmentName: string;
+  depositUnitName?: string;
   id: string;
+  invoiceNumber?: string;
   isExpected: boolean;
+  isManualAnomaly?: boolean;
+  isReviewed?: boolean;
+  manualAnomalyDetail?: string;
+  manualAnomalyReason?: string;
+  paidAmount?: number;
+  paymentDocNumber?: string;
   provider: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
   serviceNumber: string;
   status: string;
   utilityType: string;

@@ -106,6 +106,9 @@
           "isWrongMonth": {
             "type": "boolean"
           },
+          "manualAnomalyDetail": {
+            "type": "string"
+          },
           "manualAnomalyReason": {
             "type": "string"
           },
@@ -289,6 +292,9 @@
           "locationType": {
             "type": "string"
           },
+          "manualAnomalyDetail": {
+            "type": "string"
+          },
           "manualAnomalyReason": {
             "type": "string"
           },
@@ -374,6 +380,24 @@
             "format": "double",
             "type": "number"
           },
+          "attachmentReceipt": {
+            "type": "string"
+          },
+          "auditIssues": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "auditStatus": {
+            "type": "string"
+          },
+          "billCode": {
+            "type": "string"
+          },
           "billId": {
             "type": "string"
           },
@@ -383,13 +407,45 @@
           "departmentName": {
             "type": "string"
           },
+          "depositUnitName": {
+            "type": "string"
+          },
           "id": {
+            "type": "string"
+          },
+          "invoiceNumber": {
             "type": "string"
           },
           "isExpected": {
             "type": "boolean"
           },
+          "isManualAnomaly": {
+            "type": "boolean"
+          },
+          "isReviewed": {
+            "type": "boolean"
+          },
+          "manualAnomalyDetail": {
+            "type": "string"
+          },
+          "manualAnomalyReason": {
+            "type": "string"
+          },
+          "paidAmount": {
+            "format": "double",
+            "type": "number"
+          },
+          "paymentDocNumber": {
+            "type": "string"
+          },
           "provider": {
+            "type": "string"
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reviewedBy": {
             "type": "string"
           },
           "serviceNumber": {
@@ -459,6 +515,22 @@
       "BillTrackingSummaryDTO": {
         "additionalProperties": false,
         "properties": {
+          "anomalyIssues": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "corrected": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "manualAnomaly": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "normal": {
+            "format": "int64",
+            "type": "integer"
+          },
           "notReceived": {
             "format": "int64",
             "type": "integer"
@@ -467,7 +539,19 @@
             "format": "int64",
             "type": "integer"
           },
+          "paidAmount": {
+            "format": "double",
+            "type": "number"
+          },
           "pending": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pendingAmount": {
+            "format": "double",
+            "type": "number"
+          },
+          "reviewed": {
             "format": "int64",
             "type": "integer"
           },
@@ -478,6 +562,10 @@
           "unrecorded": {
             "format": "int64",
             "type": "integer"
+          },
+          "unreviewed": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -485,7 +573,15 @@
           "unrecorded",
           "notReceived",
           "pending",
-          "paid"
+          "paid",
+          "pendingAmount",
+          "paidAmount",
+          "reviewed",
+          "unreviewed",
+          "normal",
+          "anomalyIssues",
+          "manualAnomaly",
+          "corrected"
         ],
         "type": "object"
       },
@@ -883,7 +979,13 @@
           "departmentId": {
             "type": "string"
           },
+          "isActive": {
+            "type": "boolean"
+          },
           "locationType": {
+            "type": "string"
+          },
+          "phoneOwnerDivision": {
             "type": "string"
           },
           "phoneOwnerName": {
@@ -911,6 +1013,50 @@
           "utilityType",
           "provider",
           "serviceNumber"
+        ],
+        "type": "object"
+      },
+      "CreateRoleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/CreateRoleInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "defaultPath": {
+            "description": "Default landing page path (e.g. /bills)",
+            "type": "string"
+          },
+          "description": {
+            "description": "Role description",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "name": {
+            "description": "Role name (e.g. เจ้าหน้าที่การเงิน)",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "permissions": {
+            "description": "List of permitted routes/pages",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "permissions"
         ],
         "type": "object"
       },
@@ -995,6 +1141,9 @@
             "format": "double",
             "type": "number"
           },
+          "period": {
+            "type": "string"
+          },
           "recentAnomalies": {
             "items": {
               "$ref": "#/components/schemas/RecentAnomalyDTO"
@@ -1070,6 +1219,7 @@
         },
         "required": [
           "scope",
+          "period",
           "isAdmin",
           "departmentName",
           "departmentShortName",
@@ -1088,6 +1238,31 @@
           "auditIssuesCount",
           "monthlyTrends",
           "utilityBreakdowns"
+        ],
+        "type": "object"
+      },
+      "DeleteRoleOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteRoleOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
         ],
         "type": "object"
       },
@@ -1128,6 +1303,9 @@
           "id": {
             "type": "string"
           },
+          "isActive": {
+            "type": "boolean"
+          },
           "location": {
             "type": "string"
           },
@@ -1144,6 +1322,10 @@
             "type": "string"
           },
           "shortName": {
+            "type": "string"
+          },
+          "suspendedAt": {
+            "format": "date-time",
             "type": "string"
           },
           "type": {
@@ -1187,7 +1369,13 @@
           "id": {
             "type": "string"
           },
+          "isActive": {
+            "type": "boolean"
+          },
           "locationType": {
+            "type": "string"
+          },
+          "phoneOwnerDivision": {
             "type": "string"
           },
           "phoneOwnerName": {
@@ -1206,6 +1394,10 @@
           "serviceNumber": {
             "type": "string"
           },
+          "suspendedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "utilityType": {
             "type": "string"
           }
@@ -1216,6 +1408,7 @@
           "utilityType",
           "provider",
           "serviceNumber",
+          "isActive",
           "createdAt"
         ],
         "type": "object"
@@ -1311,6 +1504,10 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "detail": {
+            "description": "Detailed explanation / instructions for fixing",
             "type": "string"
           },
           "reason": {
@@ -1530,6 +1727,9 @@
           },
           "role": {
             "type": "string"
+          },
+          "roleName": {
+            "type": "string"
           }
         },
         "required": [
@@ -1596,6 +1796,16 @@
       "NotificationDTO": {
         "additionalProperties": false,
         "properties": {
+          "acknowledgedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "acknowledgedBy": {
+            "type": "string"
+          },
+          "acknowledgedReason": {
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -1671,6 +1881,18 @@
       "RecentAnomalyDTO": {
         "additionalProperties": false,
         "properties": {
+          "attachmentInvoice": {
+            "type": "string"
+          },
+          "attachmentReceipt": {
+            "type": "string"
+          },
+          "auditStatus": {
+            "type": "string"
+          },
+          "billCode": {
+            "type": "string"
+          },
           "billingMonth": {
             "format": "int64",
             "type": "integer"
@@ -1679,7 +1901,19 @@
             "format": "int64",
             "type": "integer"
           },
+          "departmentId": {
+            "type": "string"
+          },
           "departmentName": {
+            "type": "string"
+          },
+          "departmentShortName": {
+            "type": "string"
+          },
+          "depositUnitName": {
+            "type": "string"
+          },
+          "docType": {
             "type": "string"
           },
           "id": {
@@ -1689,7 +1923,19 @@
             "format": "double",
             "type": "number"
           },
+          "invoiceNumber": {
+            "type": "string"
+          },
+          "invoiceStatus": {
+            "type": "string"
+          },
+          "isAnomalyExpense": {
+            "type": "boolean"
+          },
           "isDisbursementOver2Months": {
+            "type": "boolean"
+          },
+          "isDuplicate": {
             "type": "boolean"
           },
           "isLatePayment": {
@@ -1704,8 +1950,49 @@
           "isOverdueMoreThan2Months": {
             "type": "boolean"
           },
+          "isPendingBillOnly": {
+            "type": "boolean"
+          },
+          "isPhoneOverLimit": {
+            "type": "boolean"
+          },
+          "isPhoneUsageOverLimit": {
+            "type": "boolean"
+          },
+          "isReviewed": {
+            "type": "boolean"
+          },
+          "isWrongBudget": {
+            "type": "boolean"
+          },
+          "isWrongMonth": {
+            "type": "boolean"
+          },
+          "manualAnomalyDetail": {
+            "type": "string"
+          },
           "manualAnomalyReason": {
             "type": "string"
+          },
+          "paidAmount": {
+            "format": "double",
+            "type": "number"
+          },
+          "paymentDocNumber": {
+            "type": "string"
+          },
+          "paymentStatus": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "serviceNumber": {
+            "type": "string"
+          },
+          "usageAmount": {
+            "format": "double",
+            "type": "number"
           },
           "utilityType": {
             "type": "string"
@@ -1713,17 +2000,13 @@
         },
         "required": [
           "id",
-          "departmentName",
+          "departmentId",
           "utilityType",
           "billingMonth",
           "billingYear",
-          "invoiceAmount",
-          "isManualAnomaly",
-          "manualAnomalyReason",
-          "isLateReceive",
-          "isLatePayment",
-          "isOverdueMoreThan2Months",
-          "isDisbursementOver2Months"
+          "paymentStatus",
+          "invoiceStatus",
+          "isPendingBillOnly"
         ],
         "type": "object"
       },
@@ -1852,6 +2135,77 @@
         ],
         "type": "object"
       },
+      "RoleDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RoleDTO.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "Created timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "defaultPath": {
+            "description": "Default landing page path",
+            "type": "string"
+          },
+          "description": {
+            "description": "Role description",
+            "type": "string"
+          },
+          "id": {
+            "description": "Role unique identifier",
+            "type": "string"
+          },
+          "isSystem": {
+            "description": "Whether this is a protected system role",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Thai name of the role",
+            "type": "string"
+          },
+          "permissions": {
+            "description": "List of permitted routes/pages",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "description": "Updated timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "userCount": {
+            "description": "Number of users assigned to this role",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "permissions",
+          "defaultPath",
+          "isSystem",
+          "userCount",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "RunNotificationEngineResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1921,6 +2275,42 @@
           "value",
           "color"
         ],
+        "type": "object"
+      },
+      "ToggleDepartmentServiceStatusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ToggleDepartmentServiceStatusRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ToggleDepartmentStatusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ToggleDepartmentStatusRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "TopDepartmentDTO": {
@@ -2227,7 +2617,13 @@
           "departmentId": {
             "type": "string"
           },
+          "isActive": {
+            "type": "boolean"
+          },
           "locationType": {
+            "type": "string"
+          },
+          "phoneOwnerDivision": {
             "type": "string"
           },
           "phoneOwnerName": {
@@ -2258,6 +2654,43 @@
         ],
         "type": "object"
       },
+      "UpdateRoleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/UpdateRoleInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "defaultPath": {
+            "description": "Default landing page path",
+            "type": "string"
+          },
+          "description": {
+            "description": "Role description",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "name": {
+            "description": "Role name",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "permissions": {
+            "description": "List of permitted routes/pages",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "UpdateUserInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2274,6 +2707,11 @@
             "type": "boolean"
           },
           "departmentId": {
+            "type": "string"
+          },
+          "email": {
+            "description": "User Email (editable if user has not set password)",
+            "format": "email",
             "type": "string"
           },
           "phone": {
@@ -2293,6 +2731,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "defaultPath": {
+            "description": "Default landing page path for user role",
+            "type": "string"
+          },
           "departmentId": {
             "description": "Associated department ID",
             "type": "string"
@@ -2309,9 +2751,27 @@
             "description": "User unique ID",
             "type": "string"
           },
+          "image": {
+            "description": "User avatar image URL",
+            "type": "string"
+          },
+          "isGoogle": {
+            "description": "Whether user is authenticated with Google",
+            "type": "boolean"
+          },
           "name": {
             "description": "Full name",
             "type": "string"
+          },
+          "permissions": {
+            "description": "Allowed page routes",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "phone": {
             "description": "Phone number",
@@ -2320,6 +2780,10 @@
           "role": {
             "description": "User role: admin, auditor, strategy_finance, central_staff, regional_staff, user",
             "type": "string"
+          },
+          "roleName": {
+            "description": "Display name of the user role",
+            "type": "string"
           }
         },
         "required": [
@@ -2327,6 +2791,7 @@
           "name",
           "email",
           "role",
+          "permissions",
           "createdAt"
         ],
         "type": "object"
@@ -2400,12 +2865,12 @@
         "operationId": "listAudits",
         "parameters": [
           {
-            "description": "Filter by status: PENDING_CORRECTION or CORRECTED",
+            "description": "Filter by status: PENDING_CORRECTION, PENDING_RECHECK, or CORRECTED",
             "explode": false,
             "in": "query",
             "name": "status",
             "schema": {
-              "description": "Filter by status: PENDING_CORRECTION or CORRECTED",
+              "description": "Filter by status: PENDING_CORRECTION, PENDING_RECHECK, or CORRECTED",
               "type": "string"
             }
           }
@@ -3666,6 +4131,17 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "Time period: '1m', '3m', '6m', '12m'",
+            "explode": false,
+            "in": "query",
+            "name": "period",
+            "schema": {
+              "default": "1m",
+              "description": "Time period: '1m', '3m', '6m', '12m'",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3788,6 +4264,16 @@
             "name": "departmentId",
             "schema": {
               "description": "Optional filter by department ID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional filter by status: 'active', 'inactive', or 'all'",
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Optional filter by status: 'active', 'inactive', or 'all'",
               "type": "string"
             }
           }
@@ -3974,6 +4460,64 @@
         ]
       }
     },
+    "/api/departments/services/{id}/toggle-status": {
+      "post": {
+        "operationId": "toggleDepartmentServiceStatus",
+        "parameters": [
+          {
+            "description": "Service ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Service ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleDepartmentServiceStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentServiceDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Toggle active status of a department service (ระงับการใช้งาน / ปลดระงับ)",
+        "tags": [
+          "Departments"
+        ]
+      }
+    },
     "/api/departments/{id}": {
       "delete": {
         "operationId": "deleteDepartment",
@@ -4016,7 +4560,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Delete a department",
+        "summary": "Delete or suspend a department",
         "tags": [
           "Departments"
         ]
@@ -4073,6 +4617,64 @@
           }
         ],
         "summary": "Update a department",
+        "tags": [
+          "Departments"
+        ]
+      }
+    },
+    "/api/departments/{id}/toggle-status": {
+      "post": {
+        "operationId": "toggleDepartmentStatus",
+        "parameters": [
+          {
+            "description": "Department ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Department ID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleDepartmentStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartmentDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Toggle department active or suspended status",
         "tags": [
           "Departments"
         ]
@@ -4305,7 +4907,12 @@
             "description": "Error"
           }
         },
-        "summary": "Mark notification as read",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Mark notification as read / Acknowledge",
         "tags": [
           "Notifications"
         ]
@@ -4638,6 +5245,200 @@
         "summary": "Send a password setup / reset email to the user",
         "tags": [
           "Users"
+        ]
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "description": "Returns all roles including system and custom roles with their permissions and user counts.",
+        "operationId": "listRoles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleDTO"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List all roles",
+        "tags": [
+          "Roles"
+        ]
+      },
+      "post": {
+        "description": "Create a new role with specific page-level permissions.",
+        "operationId": "createRole",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a new custom role",
+        "tags": [
+          "Roles"
+        ]
+      }
+    },
+    "/api/v1/roles/{id}": {
+      "delete": {
+        "description": "Deletes a role if it is not a system role and has no active users assigned.",
+        "operationId": "deleteRole",
+        "parameters": [
+          {
+            "description": "Role identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Role identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteRoleOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delete custom role",
+        "tags": [
+          "Roles"
+        ]
+      },
+      "put": {
+        "description": "Update permissions and details for an existing role.",
+        "operationId": "updateRole",
+        "parameters": [
+          {
+            "description": "Role identifier",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Role identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update role name, description, or permissions",
+        "tags": [
+          "Roles"
         ]
       }
     }

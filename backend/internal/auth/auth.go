@@ -238,8 +238,15 @@ func RequireRoles(ctx context.Context, allowedRoles ...string) (*Claims, error) 
 		return nil, errors.New("unauthorized: missing or invalid authentication")
 	}
 
+	if user.Role == "admin" {
+		return user, nil
+	}
+
 	for _, role := range allowedRoles {
 		if user.Role == role {
+			return user, nil
+		}
+		if role == "user" && user.Role != "" {
 			return user, nil
 		}
 	}

@@ -54,10 +54,10 @@ ORDER BY department_id, utility_type ASC;
 -- name: CreateDepartmentService :one
 INSERT INTO department_services (
     id, department_id, utility_type, provider, service_number,
-    location_type, phone_owner_name, phone_owner_position,
+    location_type, phone_owner_name, phone_owner_position, phone_owner_division,
     phone_reimbursement_limit, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()
 )
 RETURNING *;
 

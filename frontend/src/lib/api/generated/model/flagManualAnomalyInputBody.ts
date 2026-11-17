@@ -8,6 +8,8 @@
 export interface FlagManualAnomalyInputBody {
   /** A URL to the JSON Schema for this object. */
   readonly $schema?: string;
+  /** Detailed explanation / instructions for fixing */
+  detail?: string;
   /**
    * Reason for marking as manual anomaly
    * @minLength 3

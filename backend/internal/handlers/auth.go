@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,10 +21,15 @@ type UserDTO struct {
 	ID             string    `json:"id" doc:"User unique ID"`
 	Name           string    `json:"name" doc:"Full name"`
 	Email          string    `json:"email" doc:"Email address"`
+	Image          *string   `json:"image,omitempty" doc:"User avatar image URL"`
 	Role           string    `json:"role" doc:"User role: admin, auditor, strategy_finance, central_staff, regional_staff, user"`
+	RoleName       *string   `json:"roleName,omitempty" doc:"Display name of the user role"`
+	Permissions    []string  `json:"permissions" doc:"Allowed page routes"`
+	DefaultPath    *string   `json:"defaultPath,omitempty" doc:"Default landing page path for user role"`
 	DepartmentID   *string   `json:"departmentId,omitempty" doc:"Associated department ID"`
 	DepartmentName *string   `json:"departmentName,omitempty" doc:"Associated department full name"`
 	Phone          *string   `json:"phone,omitempty" doc:"Phone number"`
+	IsGoogle       bool      `json:"isGoogle,omitempty" doc:"Whether user is authenticated with Google"`
 	CreatedAt      time.Time `json:"createdAt" doc:"Account creation timestamp"`
 }
 
@@ -86,18 +92,22 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		Tags:        []string{"Auth"},
 	}, func(ctx context.Context, input *LoginInput) (*LoginOutput, error) {
 		var id, name, email, role string
-		var passwordHash, departmentID, departmentName, phone *string
+		var passwordHash, departmentID, departmentName, phone, image, roleName, defaultPath *string
 		var banned *bool
 		var createdAt time.Time
+		var permBytes []byte
 
 		err := pool.QueryRow(ctx, `
-			SELECT u.id, u.name, u.email, a.password, u.role, u.department_id, d.full_name, u.phone, u.banned, u.created_at 
+			SELECT u.id, u.name, u.email, u.image, a.password, u.role, u.department_id, d.full_name, u.phone, u.banned, u.created_at,
+			       r.name AS role_name, COALESCE(r.permissions, '[]'::jsonb) AS role_permissions,
+			       COALESCE(r.default_path, '/dashboard') AS default_path
 			FROM "user" u
 			LEFT JOIN "account" a ON a.user_id = u.id AND a.provider_id = 'credential'
 			LEFT JOIN "departments" d ON d.id = u.department_id
+			LEFT JOIN "roles" r ON r.id = u.role
 			WHERE LOWER(u.email) = LOWER($1)
 			LIMIT 1
-		`, input.Body.Email).Scan(&id, &name, &email, &passwordHash, &role, &departmentID, &departmentName, &phone, &banned, &createdAt)
+		`, input.Body.Email).Scan(&id, &name, &email, &image, &passwordHash, &role, &departmentID, &departmentName, &phone, &banned, &createdAt, &roleName, &permBytes, &defaultPath)
 
 		if err != nil {
 			return nil, huma.Error401Unauthorized("invalid email or password")
@@ -121,13 +131,25 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 			return nil, huma.Error500InternalServerError("failed to generate token")
 		}
 
+		var permissions []string = []string{}
+		if len(permBytes) > 0 {
+			_ = json.Unmarshal(permBytes, &permissions)
+		}
+		if role == "admin" && (len(permissions) == 0 || (len(permissions) == 1 && permissions[0] == "*")) {
+			permissions = []string{"*"}
+		}
+
 		out := &LoginOutput{}
 		out.Body.Token = token
 		out.Body.User = UserDTO{
 			ID:             id,
 			Name:           name,
 			Email:          email,
+			Image:          image,
 			Role:           role,
+			RoleName:       roleName,
+			Permissions:    permissions,
+			DefaultPath:    defaultPath,
 			DepartmentID:   departmentID,
 			DepartmentName: departmentName,
 			Phone:          phone,
@@ -161,18 +183,32 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		}
 
 		var id, name, email, role string
-		var departmentID, departmentName, phone *string
+		var departmentID, departmentName, phone, image, roleName, defaultPath *string
+		var isGoogle bool
 		var createdAt time.Time
+		var permBytes []byte
 
 		err := pool.QueryRow(ctx, `
-			SELECT u.id, u.name, u.email, u.role, u.department_id, d.full_name, u.phone, u.created_at 
+			SELECT u.id, u.name, u.email, u.image, u.role, u.department_id, d.full_name, u.phone, u.created_at,
+			EXISTS (SELECT 1 FROM "account" a WHERE a.user_id = u.id AND a.provider_id = 'google') AS is_google,
+			r.name AS role_name, COALESCE(r.permissions, '[]'::jsonb) AS role_permissions,
+			COALESCE(r.default_path, '/dashboard') AS default_path
 			FROM "user" u
 			LEFT JOIN "departments" d ON d.id = u.department_id
+			LEFT JOIN "roles" r ON r.id = u.role
 			WHERE u.id = $1 LIMIT 1
-		`, claims.UserID).Scan(&id, &name, &email, &role, &departmentID, &departmentName, &phone, &createdAt)
+		`, claims.UserID).Scan(&id, &name, &email, &image, &role, &departmentID, &departmentName, &phone, &createdAt, &isGoogle, &roleName, &permBytes, &defaultPath)
 
 		if err != nil {
 			return nil, huma.Error404NotFound("user not found")
+		}
+
+		var permissions []string = []string{}
+		if len(permBytes) > 0 {
+			_ = json.Unmarshal(permBytes, &permissions)
+		}
+		if role == "admin" && (len(permissions) == 0 || (len(permissions) == 1 && permissions[0] == "*")) {
+			permissions = []string{"*"}
 		}
 
 		out := &MeOutput{}
@@ -180,10 +216,15 @@ func RegisterAuthRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 			ID:             id,
 			Name:           name,
 			Email:          email,
+			Image:          image,
 			Role:           role,
+			RoleName:       roleName,
+			Permissions:    permissions,
+			DefaultPath:    defaultPath,
 			DepartmentID:   departmentID,
 			DepartmentName: departmentName,
 			Phone:          phone,
+			IsGoogle:       isGoogle,
 			CreatedAt:      createdAt,
 		}
 		return out, nil

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { updateBill, getLatestEstimatedAmount } from "@/server/actions/bills";
 import { Button } from "@/components/ui/button";
@@ -33,18 +34,17 @@ import {
   CalendarClock,
   UploadCloud,
   X,
-  Settings,
   Banknote,
   ExternalLink,
   AlertCircle,
+  Flag,
   FileText,
   Gauge,
   MapPin,
 } from "lucide-react";
-import { DepartmentServicesSheet } from "@/app/(dashboard)/departments/department-services-sheet";
-import { DepartmentCombobox } from "@/components/ui/department-combobox";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { ServiceNumberPresets } from "@/components/bills/service-number-presets";
+import { ServiceNumberCombobox } from "@/components/bills/service-number-combobox";
 import { cn } from "@/lib/utils";
 
 type Department = {
@@ -80,6 +80,7 @@ export function EditBillForm({
   initialData: any;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [state, formAction, isPending] = useActionState(updateBill, null);
   const fieldErrors =
     typeof state?.error === "object"
@@ -115,14 +116,15 @@ export function EditBillForm({
   const [invoiceStatus, setInvoiceStatus] = useState(
     initialData?.invoiceStatus || "NOT_RECEIVED",
   );
+  const [receiptStatus, setReceiptStatus] = useState<string>(
+    initialData?.attachmentReceipt && initialData.attachmentReceipt.trim() !== "" ? "RECEIVED" : "NOT_RECEIVED",
+  );
   const [disbursingType, setDisbursingType] = useState(() => {
     if (initialData?.departmentId) {
       const dept = departments.find((d) => d.id === initialData.departmentId);
-      if (dept && !dept.costCenterCode) return "หน่วยงานฝากเบิก";
+      if (dept && !dept.costCenterCode) return "หน่วยฝากเบิก";
     }
-    return initialData?.isPendingBillOnly
-      ? "หน่วยงานฝากเบิก"
-      : initialData?.disbursingType || "หน่วยงานที่เบิกจ่าย";
+    return (initialData?.isPendingBillOnly || initialData?.disbursingType === "หน่วยงานฝากเบิก" || initialData?.disbursingType === "หน่วยฝากเบิก") ? "หน่วยฝากเบิก" : "หน่วยเบิกจ่าย";
   });
   const [depositUnitId, setDepositUnitId] = useState(() => {
     if (initialData?.depositUnitId) {
@@ -154,7 +156,6 @@ export function EditBillForm({
     }
     return "";
   });
-  const [servicesSheetOpen, setServicesSheetOpen] = useState(false);
 
   const [invoiceDate, setInvoiceDate] = useState<string>(
     toDateInputString(initialData?.invoiceDate),
@@ -189,7 +190,7 @@ export function EditBillForm({
 
   useEffect(() => {
     const code =
-      disbursingType === "หน่วยงานฝากเบิก" && depositUnitId
+      disbursingType === "หน่วยฝากเบิก" && depositUnitId
         ? departments.find((d) => d.id === depositUnitId)?.costCenterCode || ""
         : departments.find((d) => d.id === selectedDept)?.costCenterCode || "";
     if (code) {
@@ -402,13 +403,59 @@ export function EditBillForm({
 
   const isCentralDept = selectedDeptData?.type === "central";
 
+  const hasCostCenter = Boolean(
+    selectedDeptData?.costCenterCode &&
+      selectedDeptData.costCenterCode.trim() !== "" &&
+      selectedDeptData.costCenterCode !== "-",
+  );
+
+  const depositUnitDept = useMemo(() => {
+    if (depositUnitId) {
+      const found = departments.find((d) => d.id === depositUnitId);
+      if (found) return found;
+    }
+    if (isCentralDept && financeDept) {
+      return financeDept;
+    }
+    if (selectedDeptData?.depositUnit) {
+      return (
+        departments.find((d) => d.id === selectedDeptData.depositUnit) || null
+      );
+    }
+    return null;
+  }, [depositUnitId, departments, isCentralDept, financeDept, selectedDeptData]);
+
+  const depositUnitName =
+    depositUnitDept?.fullName ||
+    initialData?.depositUnitName ||
+    (isCentralDept ? financeDept?.fullName || "กองบริหารการคลัง" : "-");
+
+  const depositUnitCostCenter =
+    depositUnitDept?.costCenterCode ||
+    (isCentralDept ? financeDept?.costCenterCode : null) ||
+    "-";
+
   useEffect(() => {
-    if (isCentralDept && disbursingType === "หน่วยงานฝากเบิก" && financeDept) {
-      if (depositUnitId !== financeDept.id) {
-        setDepositUnitId(financeDept.id);
+    if (hasCostCenter) {
+      if (disbursingType !== "หน่วยเบิกจ่าย") {
+        setDisbursingType("หน่วยเบิกจ่าย");
+      }
+      if (depositUnitId !== "") {
+        setDepositUnitId("");
+      }
+    } else {
+      if (disbursingType !== "หน่วยฝากเบิก") {
+        setDisbursingType("หน่วยฝากเบิก");
+      }
+      if (isCentralDept && financeDept) {
+        if (depositUnitId !== financeDept.id) {
+          setDepositUnitId(financeDept.id);
+        }
+      } else if (!depositUnitId && selectedDeptData?.depositUnit) {
+        setDepositUnitId(selectedDeptData.depositUnit);
       }
     }
-  }, [isCentralDept, disbursingType, financeDept, depositUnitId]);
+  }, [hasCostCenter, disbursingType, depositUnitId, isCentralDept, financeDept, selectedDeptData]);
 
   const getDeptTypeName = (type: string | null | undefined) => {
     if (type === "central") return "ส่วนกลาง";
@@ -426,29 +473,14 @@ export function EditBillForm({
 
     const dept = departments.find((d) => d.id === val);
     if (dept && !dept.costCenterCode) {
-      setDisbursingType("หน่วยงานฝากเบิก");
+      setDisbursingType("หน่วยฝากเบิก");
       if (dept.type === "central" && financeDept) {
         setDepositUnitId(financeDept.id);
       } else {
         setDepositUnitId(dept.depositUnit || "");
       }
     } else {
-      setDisbursingType("หน่วยงานที่เบิกจ่าย");
-      setDepositUnitId("");
-    }
-  };
-
-  const handleDisbursingTypeChange = (val: string | null) => {
-    if (!val) return;
-    setDisbursingType(val);
-    if (val === "หน่วยงานฝากเบิก") {
-      if (isCentralDept && financeDept) {
-        setDepositUnitId(financeDept.id);
-      } else {
-        const dept = departments.find((d) => d.id === selectedDept);
-        setDepositUnitId(dept?.depositUnit || "");
-      }
-    } else {
+      setDisbursingType("หน่วยเบิกจ่าย");
       setDepositUnitId("");
     }
   };
@@ -484,9 +516,15 @@ export function EditBillForm({
 
   useEffect(() => {
     if (state?.success) {
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          typeof query.queryKey[0] === "string" &&
+          query.queryKey[0].startsWith("/api/bills"),
+      });
+      router.refresh();
       router.back();
     }
-  }, [state?.success, router]);
+  }, [state?.success, router, queryClient]);
 
   useEffect(() => {
     if (state?.error) {
@@ -500,10 +538,11 @@ export function EditBillForm({
   }, [state?.error]);
 
   const handleFormSubmit = (formData: FormData) => {
+    formData.set("receiptStatus", receiptStatus);
     if (selectedInvoiceFile) {
       formData.set("attachmentInvoice", selectedInvoiceFile);
     }
-    if (selectedReceiptFile) {
+    if (receiptStatus === "RECEIVED" && selectedReceiptFile) {
       formData.set("attachmentReceipt", selectedReceiptFile);
     }
     if (selectedDirectPaymentFile) {
@@ -549,6 +588,30 @@ export function EditBillForm({
             </div>
           )}
 
+          {/* Anomaly Notice from Auditor */}
+          {initialData?.isManualAnomaly && (initialData.manualAnomalyReason || initialData.manualAnomalyDetail) && (
+            <div className="flex items-start gap-3.5 p-4 text-sm text-destructive bg-destructive/10 rounded-2xl border border-destructive/20 shadow-xs animate-in fade-in-0 duration-200">
+              <Flag className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+              <div className="flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-destructive text-sm">
+                    ข้อสังเกตความผิดปกติจากผู้ตรวจสอบ
+                  </span>
+                  {initialData.manualAnomalyReason && (
+                    <Badge variant="destructive" className="text-xs font-normal">
+                      {initialData.manualAnomalyReason}
+                    </Badge>
+                  )}
+                </div>
+                {initialData.manualAnomalyDetail && (
+                  <p className="text-xs text-destructive/90 whitespace-pre-line leading-relaxed">
+                    {initialData.manualAnomalyDetail}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Group 1: ข้อมูลทั่วไป */}
           <div className="space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs">
             <div className="flex items-center gap-2 border-b pb-3">
@@ -557,10 +620,8 @@ export function EditBillForm({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.departmentId}>
-                <Label htmlFor="departmentId">
-                  หน่วยงาน <span className="text-destructive">*</span>
-                </Label>
+              <div className="grid gap-2 relative md:col-span-2" data-has-error={!!fieldErrors?.departmentId}>
+                <Label htmlFor="departmentId">ชื่อหน่วยงาน</Label>
                 <input type="hidden" name="departmentId" value={selectedDept} />
                 <Input
                   id="departmentId"
@@ -568,32 +629,21 @@ export function EditBillForm({
                   value={selectedDeptData?.fullName || "ไม่ระบุหน่วยงาน"}
                   readOnly
                   disabled
-                  className="bg-muted/70 cursor-not-allowed font-medium text-foreground disabled:opacity-100 shadow-2xs"
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
                 <ErrorSpeechBubble message={fieldErrors?.departmentId} />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="division">อักษรย่อ</Label>
+                <Label htmlFor="disbursingType">ประเภทหน่วยงาน</Label>
+                <input type="hidden" name="disbursingType" value={disbursingType} />
                 <Input
+                  id="disbursingType"
                   type="text"
-                  id="division"
-                  value={selectedDeptData?.shortName || "-"}
-                  onChange={() => {}}
+                  value={disbursingType}
                   readOnly
-                  className="bg-muted cursor-not-allowed"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="costCenterCode">รหัสศูนย์ต้นทุน</Label>
-                <Input
-                  type="text"
-                  id="costCenterCode"
-                  value={selectedDeptData?.costCenterCode || "-"}
-                  onChange={() => {}}
-                  readOnly
-                  className="bg-muted cursor-not-allowed"
+                  disabled
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
               </div>
 
@@ -603,95 +653,67 @@ export function EditBillForm({
                   type="text"
                   id="deptType"
                   value={getDeptTypeName(selectedDeptData?.type)}
-                  onChange={() => {}}
                   readOnly
-                  className="bg-muted cursor-not-allowed"
+                  disabled
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
               </div>
 
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.disbursingType}>
-                <Label htmlFor="disbursingType">ประเภทการเบิกจ่าย</Label>
-                <Select
-                  name={
-                    selectedDeptData?.costCenterCode
-                      ? "disbursingType"
-                      : undefined
-                  }
-                  value={disbursingType}
-                  onValueChange={handleDisbursingTypeChange}
-                  disabled={!selectedDeptData?.costCenterCode}
-                >
-                  <SelectTrigger
-                    className={
-                      !selectedDeptData?.costCenterCode
-                        ? "bg-muted cursor-not-allowed"
-                        : fieldErrors?.disbursingType
-                          ? "border-rose-500 ring-2 ring-rose-500/20"
-                          : ""
-                    }
-                  >
-                    <SelectValue placeholder="เลือกประเภท..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="หน่วยงานที่เบิกจ่าย">
-                      หน่วยงานที่เบิกจ่าย
-                    </SelectItem>
-                    <SelectItem value="หน่วยงานฝากเบิก">หน่วยงานฝากเบิก</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!selectedDeptData?.costCenterCode && (
-                  <input
-                    type="hidden"
-                    name="disbursingType"
-                    value={disbursingType}
-                  />
-                )}
-                <ErrorSpeechBubble message={fieldErrors?.disbursingType} />
-              </div>
-
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.depositUnitId}>
-                <Label htmlFor="depositUnit">
-                  ฝากเบิกกับหน่วยงาน{" "}
-                  {disbursingType === "หน่วยงานฝากเบิก" && (
-                    <span className="text-destructive">*</span>
-                  )}
-                </Label>
-                <div className="w-full">
-                  {isCentralDept && disbursingType === "หน่วยงานฝากเบิก" ? (
-                    <div className="space-y-1.5">
-                      <input
-                        type="hidden"
-                        name="depositUnit"
-                        value={financeDept?.id || depositUnitId}
-                      />
-                      <Input
-                        type="text"
-                        value={financeDept?.fullName || "กองบริหารการคลัง"}
-                        readOnly
-                        disabled
-                        className="bg-muted/70 cursor-not-allowed font-medium text-foreground disabled:opacity-100 shadow-2xs"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        * ระดับหน่วยงานส่วนกลาง บังคับฝากเบิกกับกองบริหารการคลังเท่านั้น
-                      </p>
-                    </div>
-                  ) : (
-                    <DepartmentCombobox
-                      departments={departments}
-                      name="depositUnit"
-                      value={depositUnitId}
-                      onValueChange={setDepositUnitId}
-                      disabled={disbursingType !== "หน่วยงานฝากเบิก"}
-                      placeholder={
-                        disbursingType === "หน่วยงานฝากเบิก"
-                          ? "ระบุหน่วยงานที่รับฝากเบิก"
-                          : "-"
-                      }
+              {hasCostCenter ? (
+                <>
+                  {/* กรณีมีรหัสศูนย์ต้นทุน: บังคับเป็นหน่วยเบิกจ่าย แสดงรหัสศูนย์ต้นทุน */}
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label htmlFor="costCenterCode">รหัสศูนย์ต้นทุน</Label>
+                    <Input
+                      type="text"
+                      id="costCenterCode"
+                      value={selectedDeptData?.costCenterCode || "-"}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-mono font-medium text-foreground shadow-2xs"
                     />
-                  )}
-                  <ErrorSpeechBubble message={fieldErrors?.depositUnitId} />
-                </div>
-              </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* กรณีไม่มีรหัสศูนย์ต้นทุน: บังคับเป็นหน่วยฝากเบิก แสดงฝากเบิกกับหน่วยงาน (ล็อค) + รหัสศูนย์ต้นทุนของหน่วยงานที่ฝากให้เบิกจ่าย */}
+                  <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.depositUnitId}>
+                    <Label htmlFor="depositUnit">ฝากเบิกกับหน่วยงาน</Label>
+                    <input
+                      type="hidden"
+                      name="depositUnit"
+                      value={depositUnitDept?.id || depositUnitId}
+                    />
+                    <Input
+                      id="depositUnit"
+                      type="text"
+                      value={depositUnitName}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
+                    />
+                    <ErrorSpeechBubble message={fieldErrors?.depositUnitId} />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="depositUnitCostCenter">
+                      รหัสศูนย์ต้นทุนของหน่วยงานที่ฝากให้เบิกจ่าย
+                    </Label>
+                    <Input
+                      type="text"
+                      id="depositUnitCostCenter"
+                      value={depositUnitCostCenter}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-mono font-medium text-foreground shadow-2xs"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground md:col-span-2 -mt-2.5 whitespace-nowrap">
+                    * กรณีประสงค์เปลี่ยนแปลงหน่วยงานที่รับฝากเบิกจ่าย กรุณาติดต่อกลุ่มตรวจสอบภายใน (กตน.)
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -780,74 +802,19 @@ export function EditBillForm({
                         setSelectedServiceNumbers(numbers);
                       }}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-xs font-medium border-orange-500/30 bg-orange-50/80 text-orange-600 hover:bg-orange-100 hover:border-orange-500/50 dark:bg-orange-950/30 dark:text-orange-400 dark:hover:bg-orange-950/50 shadow-2xs transition-all gap-1.5 rounded-lg"
-                      disabled={!selectedDeptData}
-                      onClick={() => setServicesSheetOpen(true)}
-                    >
-                      <Settings className="size-3.5" />
-                      <span>จัดการหมายเลข</span>
-                    </Button>
                   </div>
                 </div>
 
                 {/* Selection Dropdown */}
                 <div className="space-y-2">
-                  <Select
-                    value=""
-                    onValueChange={addServiceNumber}
+                  <ServiceNumberCombobox
+                    id="serviceNumber"
+                    services={utilityServices}
+                    selectedNumbers={selectedServiceNumbers}
+                    onSelect={addServiceNumber}
                     disabled={!selectedUtility || utilityServices.length === 0}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "h-10 bg-background shadow-2xs text-xs sm:text-sm rounded-xl",
-                        !selectedUtility || utilityServices.length === 0
-                          ? "bg-muted cursor-not-allowed opacity-60"
-                          : fieldErrors?.serviceNumber
-                            ? "border-rose-500 ring-2 ring-rose-500/20"
-                            : ""
-                      )}
-                    >
-                      <SelectValue
-                        placeholder={
-                          !selectedUtility
-                            ? "⚠️ กรุณาเลือกประเภทสาธารณูปโภคด้านบนก่อน"
-                            : utilityServices.length === 0
-                              ? "ไม่พบหมายเลขผู้ใช้ในระบบ (กดปุ่มจัดการหมายเลขเพื่อเพิ่ม)"
-                              : "+ ค้นหาและคลิกเพื่อเลือกหมายเลขผู้ใช้ / รหัสเครื่องวัด..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64">
-                      {utilityServices
-                        .filter((svc) => !selectedServiceNumbers.includes(svc.serviceNumber))
-                        .map((svc) => (
-                          <SelectItem
-                            key={svc.id}
-                            value={svc.serviceNumber}
-                            label={svc.serviceNumber}
-                            className="py-2"
-                          >
-                            <div className="flex items-center justify-between gap-3 w-full">
-                              <span className="font-mono font-semibold text-xs text-foreground">
-                                {svc.serviceNumber}
-                              </span>
-                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                                {svc.provider && <span>({svc.provider})</span>}
-                                {svc.locationType && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                    {svc.locationType}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    hasError={!!fieldErrors?.serviceNumber}
+                  />
 
                   <input
                     type="hidden"
@@ -926,14 +893,26 @@ export function EditBillForm({
                     <input type="hidden" name="provider" value={provider} />
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="size-3.5 text-muted-foreground" />
-                    <span>ที่ตั้ง:</span>
-                    <span className="font-medium text-foreground">
-                      {selectedLocation || "ตรวจจับอัตโนมัติจากหมายเลขที่เลือก"}
-                    </span>
-                    <input type="hidden" name="locationType" value={selectedLocation} />
-                  </div>
+                  {(selectedUtility === "ค่าไฟฟ้า" ||
+                    selectedUtility === "ค่าประปา&น้ำบาดาล") && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-3.5 text-muted-foreground" />
+                      <span>ที่ตั้ง:</span>
+                      <span className="font-medium text-foreground">
+                        {selectedLocation || "ตรวจจับอัตโนมัติจากหมายเลขที่เลือก"}
+                      </span>
+                    </div>
+                  )}
+                  <input
+                    type="hidden"
+                    name="locationType"
+                    value={
+                      selectedUtility === "ค่าไฟฟ้า" ||
+                      selectedUtility === "ค่าประปา&น้ำบาดาล"
+                        ? selectedLocation
+                        : ""
+                    }
+                  />
                 </div>
               </div>
 
@@ -989,7 +968,14 @@ export function EditBillForm({
                 />
                 <RadioGroup
                   value={invoiceStatus}
-                  onValueChange={setInvoiceStatus}
+                  onValueChange={(val) => {
+                    setInvoiceStatus(val);
+                    if (val === "NOT_RECEIVED") {
+                      setPaymentStatus("PENDING");
+                      setReceiptStatus("NOT_RECEIVED");
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
                   name="invoiceStatus"
                   className="flex flex-col space-y-2 mt-1"
                 >
@@ -1046,11 +1032,11 @@ export function EditBillForm({
                     <ErrorSpeechBubble message={fieldErrors?.receivedDate} />
                   </div>
 
-                  {disbursingType === "หน่วยงานฝากเบิก" && (
+                  {disbursingType === "หน่วยฝากเบิก" && (
                     <>
                       <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.sentToDisbursingDate}>
                         <Label htmlFor="sentToDisbursingDate">
-                          หน่วยฝากเบิกส่งเอกสาร
+                          วันที่หน่วยฝากเบิกส่งเอกสาร
                         </Label>
                         <DatePickerBE
                           id="sentToDisbursingDate"
@@ -1065,7 +1051,7 @@ export function EditBillForm({
 
                       <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.disbursingReceivedDate}>
                         <Label htmlFor="disbursingReceivedDate">
-                          วันที่หน่วยเบิกจ่ายลงรับใบแจ้งหนี้
+                          วันที่หน่วยเบิกจ่ายลงรับใบสำคัญ
                         </Label>
                         <DatePickerBE
                           id="disbursingReceivedDate"
@@ -1193,7 +1179,7 @@ export function EditBillForm({
                     selectedUtility === "ค่าประปา&น้ำบาดาล") && (
                     <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.unitsUsed}>
                       <Label htmlFor="unitsUsed">
-                        ปริมาณการใช้ (kWh / m³){" "}
+                        ปริมาณการใช้ (หน่วย){" "}
                         <span className="text-destructive">*</span>
                       </Label>
                       <Input
@@ -1270,7 +1256,13 @@ export function EditBillForm({
                 />
                 <RadioGroup
                   value={paymentStatus}
-                  onValueChange={setPaymentStatus}
+                  onValueChange={(val) => {
+                    setPaymentStatus(val);
+                    if (val !== "PAID") {
+                      setReceiptStatus("NOT_RECEIVED");
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
                   name="paymentStatus"
                   className="flex flex-col space-y-2 mt-1"
                 >
@@ -1417,16 +1409,36 @@ export function EditBillForm({
                       <Label htmlFor="docType">
                         ประเภทเอกสาร <span className="text-destructive">*</span>
                       </Label>
-                      <Input
-                        type="text"
-                        id="docType"
-                        name="docType"
+                      <Select
                         value={docType}
-                        onChange={(e) => setDocType(e.target.value)}
-                        placeholder="เช่น KC"
+                        onValueChange={(val) => setDocType(val || "")}
+                        name="docType"
                         required={true}
-                        className={fieldErrors?.docType ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
-                      />
+                      >
+                        <SelectTrigger
+                          id="docType"
+                          className={fieldErrors?.docType ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
+                        >
+                          <SelectValue placeholder="เลือกประเภทเอกสาร..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="KC" label="KC">
+                            KC
+                          </SelectItem>
+                          <SelectItem value="KE" label="KE">
+                            KE
+                          </SelectItem>
+                          <SelectItem value="KI" label="KI">
+                            KI
+                          </SelectItem>
+                          <SelectItem value="KL" label="KL">
+                            KL
+                          </SelectItem>
+                          <SelectItem value="KN" label="KN">
+                            KN
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <ErrorSpeechBubble message={fieldErrors?.docType} />
                     </div>
 
@@ -1507,18 +1519,6 @@ export function EditBillForm({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <FileUploadDropzone
-                        id="attachmentReceipt"
-                        name="attachmentReceipt"
-                        label="ใบเสร็จรับเงิน"
-                        required
-                        accept="image/*,.pdf"
-                        value={selectedReceiptFile}
-                        onChange={setSelectedReceiptFile}
-                        existingUrl={initialData?.attachmentReceipt}
-                        errorMessage={fieldErrors?.attachmentReceipt}
-                      />
-
-                      <FileUploadDropzone
                         id="attachmentDirectPayment"
                         name="attachmentDirectPayment"
                         label="รายงานจ่ายตรง / รายงาน KTB"
@@ -1538,6 +1538,87 @@ export function EditBillForm({
               )}
             </div>
           </div>
+
+          {/* Group 5: ใบเสร็จชำระเงิน */}
+          <div className="space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs">
+            <div className="flex items-center gap-2 border-b pb-3">
+              <Receipt className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-lg tracking-tight">
+                ใบเสร็จชำระเงิน
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5">
+              <div className="grid gap-2">
+                <Label>
+                  สถานะใบเสร็จชำระเงิน <span className="text-destructive">*</span>
+                </Label>
+                <input
+                  type="hidden"
+                  name="receiptStatus"
+                  value={receiptStatus}
+                />
+                <RadioGroup
+                  value={receiptStatus}
+                  onValueChange={(val) => {
+                    setReceiptStatus(val);
+                    if (val !== "RECEIVED") {
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
+                  name="receiptStatus"
+                  className="flex flex-col space-y-2 mt-1"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="NOT_RECEIVED" id="receipt_not_received" />
+                    <Label
+                      htmlFor="receipt_not_received"
+                      className="font-normal cursor-pointer"
+                    >
+                      ยังไม่ได้ใบเสร็จชำระเงิน
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem
+                      value="RECEIVED"
+                      id="receipt_received"
+                      disabled={paymentStatus !== "PAID"}
+                    />
+                    <Label
+                      htmlFor="receipt_received"
+                      className={`font-normal cursor-pointer ${paymentStatus !== "PAID" ? "text-muted-foreground opacity-50" : ""}`}
+                    >
+                      ได้ใบเสร็จชำระเงินแล้ว
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {receiptStatus === "RECEIVED" && (
+                <div className="pt-4 border-t border-dashed mt-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <UploadCloud className="h-5 w-5 text-primary" />
+                    <h4 className="font-semibold text-md tracking-tight">
+                      ไฟล์แนบหลักฐาน
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <FileUploadDropzone
+                      id="attachmentReceipt"
+                      name="attachmentReceipt"
+                      label="ใบเสร็จรับเงิน"
+                      required
+                      accept="image/*,.pdf"
+                      value={selectedReceiptFile}
+                      onChange={setSelectedReceiptFile}
+                      existingUrl={initialData?.attachmentReceipt}
+                      errorMessage={fieldErrors?.attachmentReceipt}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2 bg-muted/50 p-4 rounded-b-xl border-t mt-4">
           <Button
@@ -1552,15 +1633,6 @@ export function EditBillForm({
           </Button>
         </CardFooter>
       </form>
-
-      {selectedDeptData && (
-        <DepartmentServicesSheet
-          department={selectedDeptData as any}
-          services={deptServices}
-          open={servicesSheetOpen}
-          onOpenChange={setServicesSheetOpen}
-        />
-      )}
     </Card>
   );
 }

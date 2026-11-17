@@ -37,6 +37,8 @@ func main() {
 	handlers.RegisterNotificationRoutes(api, nil)
 	handlers.RegisterReportRoutes(api, nil)
 	handlers.RegisterUserRoutes(api, nil, cfg, nil, nil)
+	handlers.RegisterRoleRoutes(api, nil)
+	handlers.RegisterAIRoutes(api, nil, cfg)
 
 	data, err := json.MarshalIndent(api.OpenAPI(), "", "  ")
 	if err != nil {

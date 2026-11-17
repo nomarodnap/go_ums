@@ -351,7 +351,7 @@ export const useRunNotificationEngine = <TError = ErrorModel,
       return useMutation(mutationOptions, queryClient);
     }
     /**
- * @summary Mark notification as read
+ * @summary Mark notification as read / Acknowledge
  */
 export const markNotificationRead = (
     id: string,
@@ -396,7 +396,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type MarkNotificationReadMutationError = ErrorModel
 
     /**
- * @summary Mark notification as read
+ * @summary Mark notification as read / Acknowledge
  */
 export const useMarkNotificationRead = <TError = ErrorModel,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}

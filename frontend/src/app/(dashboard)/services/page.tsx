@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import {
   useListDepartments,
@@ -8,7 +9,7 @@ import {
 import { ServicesTable } from "./services-table";
 import { LoadingEffect } from "@/components/ui/loading-effect";
 
-export default function ServicesPage() {
+function ServicesContent() {
   const { data: userRes, isLoading: isUserLoading } = useGetCurrentUser();
   const { data: deptRes, isLoading: isDeptLoading } = useListDepartments();
   const { data: servicesRes, isLoading: isServicesLoading } =
@@ -30,40 +31,60 @@ export default function ServicesPage() {
       ? servicesRes.data
       : [];
 
-  // Filter based on role (admin sees all, non-admin sees only own department's services)
-  const services =
-    userRole === "admin"
-      ? allServices
-      : allServices.filter((s) => s.departmentId === userDepartmentId);
+  // แสดงเฉพาะรายการรหัสเครื่องวัดของหน่วยงานตนเอง
+  const services = allServices.filter(
+    (s) => s.departmentId === userDepartmentId,
+  );
 
-  // Filter allowed departments for dropdown
-  const allowedDepartments =
-    userRole === "admin"
-      ? allDepartments
-      : allDepartments.filter((d) => d.id === userDepartmentId);
+  const allowedDepartments = allDepartments.filter(
+    (d) => d.id === userDepartmentId,
+  );
+
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดข้อมูลรหัสเครื่องวัดของหน่วยงาน..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="flex-1 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
-          รหัสเครื่องวัด / เบอร์โทร
+          รหัสเครื่องวัด / หมายเลขผู้ใช้
         </h2>
       </div>
-      <p className="text-muted-foreground">
-        จัดการข้อมูลบัญชีผู้ให้บริการสาธารณูปโภค หมายเลขผู้ใช้ รหัสเครื่องวัด
-        และเบอร์โทรศัพท์ของหน่วยงาน
+      <p className="text-muted-foreground text-sm">
+        จัดการข้อมูลบัญชีผู้ให้บริการสาธารณูปโภค รหัสเครื่องวัด
+        และหมายเลขผู้ใช้ของหน่วยงานตนเอง
       </p>
 
-      {isLoading ? (
-        <LoadingEffect message="กำลังโหลดข้อมูลรหัสเครื่องวัดและเบอร์โทร..." />
-      ) : (
-        <ServicesTable
-          services={services}
-          departments={allowedDepartments}
-          userRole={userRole}
-          userDepartmentId={userDepartmentId}
-        />
-      )}
+      <ServicesTable
+        services={services}
+        departments={allowedDepartments}
+        userRole={userRole}
+        userDepartmentId={userDepartmentId}
+        scope="my_dept"
+      />
     </div>
+  );
+}
+
+export default function ServicesPage() {
+  return (
+    <Suspense
+      fallback={
+        <LoadingEffect
+          fullScreen
+          message="กำลังโหลดข้อมูลรหัสเครื่องวัดของหน่วยงาน..."
+          subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+        />
+      }
+    >
+      <ServicesContent />
+    </Suspense>
   );
 }

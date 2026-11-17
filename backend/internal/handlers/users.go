@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -22,6 +23,7 @@ type ManageUserDTO struct {
 	Email          string    `json:"email"`
 	EmailVerified  bool      `json:"emailVerified"`
 	Role           string    `json:"role"`
+	RoleName       *string   `json:"roleName,omitempty"`
 	Banned         bool      `json:"banned"`
 	DepartmentID   *string   `json:"departmentId,omitempty"`
 	DepartmentName *string   `json:"departmentName,omitempty"`
@@ -48,6 +50,7 @@ type CreateUserInput struct {
 type UpdateUserInput struct {
 	ID   string `path:"id" doc:"User ID"`
 	Body struct {
+		Email        *string `json:"email,omitempty" format:"email" doc:"User Email (editable if user has not set password)"`
 		Role         *string `json:"role,omitempty"`
 		DepartmentID *string `json:"departmentId,omitempty"`
 		Phone        *string `json:"phone,omitempty"`
@@ -83,11 +86,12 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		}
 
 		query := `
-			SELECT u.id, u.name, u.email, u.email_verified, u.role, COALESCE(u.banned, FALSE),
+			SELECT u.id, u.name, u.email, u.email_verified, u.role, r.name AS role_name, COALESCE(u.banned, FALSE),
 			       u.department_id, d.full_name, u.phone, (a.password IS NOT NULL), u.created_at
 			FROM "user" u
 			LEFT JOIN "departments" d ON d.id = u.department_id
 			LEFT JOIN "account" a ON a.user_id = u.id AND a.provider_id = 'credential'
+			LEFT JOIN "roles" r ON r.id = u.role
 			WHERE 1=1
 		`
 		var args []interface{}
@@ -107,7 +111,7 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 		for rows.Next() {
 			var u ManageUserDTO
 			if err := rows.Scan(
-				&u.ID, &u.Name, &u.Email, &u.EmailVerified, &u.Role, &u.Banned,
+				&u.ID, &u.Name, &u.Email, &u.EmailVerified, &u.Role, &u.RoleName, &u.Banned,
 				&u.DepartmentID, &u.DepartmentName, &u.Phone, &u.HasPassword, &u.CreatedAt,
 			); err == nil {
 				results = append(results, u)
@@ -214,6 +218,45 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 			return nil, huma.Error403Forbidden(err.Error())
 		}
 
+		if input.Body.Email != nil {
+			newEmail := strings.TrimSpace(strings.ToLower(*input.Body.Email))
+			if newEmail == "" {
+				return nil, huma.Error400BadRequest("อีเมลต้องไม่เป็นค่าว่าง")
+			}
+
+			var hasPassword bool
+			var oldEmail string
+			err := pool.QueryRow(ctx, `
+				SELECT (a.password IS NOT NULL), u.email
+				FROM "user" u
+				LEFT JOIN "account" a ON a.user_id = u.id AND a.provider_id = 'credential'
+				WHERE u.id = $1
+			`, input.ID).Scan(&hasPassword, &oldEmail)
+			if err != nil {
+				return nil, huma.Error404NotFound("user not found")
+			}
+
+			if hasPassword && !strings.EqualFold(newEmail, oldEmail) {
+				return nil, huma.Error400BadRequest("ไม่สามารถแก้ไขอีเมลของผู้ใช้งานที่ตั้งรหัสผ่านเรียบร้อยแล้ว")
+			}
+
+			if !strings.EqualFold(newEmail, oldEmail) {
+				var count int
+				_ = pool.QueryRow(ctx, `SELECT COUNT(*) FROM "user" WHERE LOWER(email) = LOWER($1) AND id != $2`, newEmail, input.ID).Scan(&count)
+				if count > 0 {
+					return nil, huma.Error400BadRequest("อีเมลนี้ถูกใช้งานแล้วในระบบ")
+				}
+
+				_, err = pool.Exec(ctx, `UPDATE "user" SET email = $2, email_verified = FALSE, updated_at = NOW() WHERE id = $1`, input.ID, newEmail)
+				if err != nil {
+					return nil, huma.Error500InternalServerError("ไม่สามารถอัปเดตอีเมลได้")
+				}
+
+				// Update any pending verification records for this user
+				_, _ = pool.Exec(ctx, `UPDATE verification SET identifier = $1, updated_at = NOW() WHERE LOWER(identifier) = LOWER($2)`, newEmail, oldEmail)
+			}
+		}
+
 		// Update fields conditionally
 		if input.Body.Role != nil {
 			_, _ = pool.Exec(ctx, `UPDATE "user" SET role = $2, updated_at = NOW() WHERE id = $1`, input.ID, *input.Body.Role)
@@ -235,14 +278,15 @@ func RegisterUserRoutes(api huma.API, pool *pgxpool.Pool, cfg *config.Config, em
 
 		var u ManageUserDTO
 		err := pool.QueryRow(ctx, `
-			SELECT u.id, u.name, u.email, u.email_verified, u.role, COALESCE(u.banned, FALSE),
+			SELECT u.id, u.name, u.email, u.email_verified, u.role, r.name AS role_name, COALESCE(u.banned, FALSE),
 			       u.department_id, d.full_name, u.phone, (a.password IS NOT NULL), u.created_at
 			FROM "user" u
 			LEFT JOIN "departments" d ON d.id = u.department_id
 			LEFT JOIN "account" a ON a.user_id = u.id AND a.provider_id = 'credential'
+			LEFT JOIN "roles" r ON r.id = u.role
 			WHERE u.id = $1
 		`, input.ID).Scan(
-			&u.ID, &u.Name, &u.Email, &u.EmailVerified, &u.Role, &u.Banned,
+			&u.ID, &u.Name, &u.Email, &u.EmailVerified, &u.Role, &u.RoleName, &u.Banned,
 			&u.DepartmentID, &u.DepartmentName, &u.Phone, &u.HasPassword, &u.CreatedAt,
 		)
 

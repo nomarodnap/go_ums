@@ -19,4 +19,5 @@ export interface ManageUserDTO {
   name: string;
   phone?: string;
   role: string;
+  roleName?: string;
 }

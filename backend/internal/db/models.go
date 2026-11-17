@@ -24,6 +24,12 @@ type Account struct {
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }
 
+type AppCache struct {
+	Key       string             `json:"key"`
+	Value     []byte             `json:"value"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type Audit struct {
 	ID                        string             `json:"id"`
 	UtilityBillID             string             `json:"utility_bill_id"`
@@ -111,6 +117,8 @@ type DepartmentService struct {
 	PhoneReimbursementLimit pgtype.Int4        `json:"phone_reimbursement_limit"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	IsActive                bool               `json:"is_active"`
+	PhoneOwnerDivision      pgtype.Text        `json:"phone_owner_division"`
 }
 
 type Notification struct {

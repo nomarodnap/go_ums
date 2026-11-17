@@ -18,4 +18,8 @@ departmentId?: string;
  * Fiscal Year filter
  */
 fiscalYear?: number;
+/**
+ * Time period: '1m', '3m', '6m', '12m'
+ */
+period?: string;
 };

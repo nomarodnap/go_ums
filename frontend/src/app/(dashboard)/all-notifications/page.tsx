@@ -29,20 +29,26 @@ export default function AllNotificationsPage() {
 
   const isLoading = loadingMe || loadingNotifs;
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดรายการแจ้งเตือนทั้งหมด..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      {isLoading ? (
-        <LoadingEffect message="กำลังโหลดรายการแจ้งเตือนทั้งหมด..." />
-      ) : (
-        <NotificationList
-          notifications={notifications}
-          title="การแจ้งเตือนทุกหน่วยงานในระบบ"
-          description="รายการแจ้งเตือนทั้งหมดจากทุกสำนัก/กอง/ศูนย์ทั่วประเทศ (สำหรับผู้ดูแลระบบ)"
-          scope="all"
-          showDepartmentBadge={true}
-          showAcknowledgeButton={false}
-        />
-      )}
+      <NotificationList
+        notifications={notifications}
+        title="การแจ้งเตือนทุกหน่วยงานในระบบ"
+        description="รายการแจ้งเตือนทั้งหมดจากทุกสำนัก/กอง/ศูนย์ทั่วประเทศ (สำหรับผู้ดูแลระบบ)"
+        scope="all"
+        showDepartmentBadge={true}
+        showAcknowledgeButton={false}
+      />
     </div>
   );
 }

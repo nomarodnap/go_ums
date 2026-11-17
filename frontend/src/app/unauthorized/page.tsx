@@ -11,14 +11,13 @@ export const metadata: Metadata = {
 export default function UnauthorizedPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground text-center p-4">
-      <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-2xl bg-white dark:bg-slate-900 p-2.5 shadow-md ring-1 ring-slate-900/5 dark:ring-slate-100/10 transition-transform hover:scale-105">
+      <div className="mb-6 flex size-24 items-center justify-center rounded-full bg-white dark:bg-slate-900 p-1 shadow-md ring-1 ring-slate-900/5 dark:ring-slate-100/10 transition-transform hover:scale-105 overflow-hidden">
         <Image
           src="/logo.png"
           alt="ตราสัญลักษณ์กรมประมง"
-          width={80}
-          height={80}
-          style={{ width: "auto", height: "auto" }}
-          className="h-full w-full object-contain"
+          width={88}
+          height={88}
+          className="size-full object-contain"
           priority
         />
       </div>

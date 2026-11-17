@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS departments (
     phone TEXT,
     responsible_phone TEXT,
     email TEXT,
-    type TEXT, -- 'central', 'regional_central', 'regional'
+    type TEXT, -- 'central', 'regional_central', 'regional',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    suspended_at TIMESTAMPTZ
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -97,7 +99,10 @@ CREATE TABLE IF NOT EXISTS department_services (
     location_type TEXT,
     phone_owner_name TEXT,
     phone_owner_position TEXT,
+    phone_owner_division TEXT,
     phone_reimbursement_limit INTEGER,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    suspended_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -190,6 +195,7 @@ CREATE TABLE IF NOT EXISTS audits (
     status TEXT NOT NULL DEFAULT 'PENDING_CORRECTION',
     remarks TEXT,
     manual_anomaly_reason TEXT,
+    manual_anomaly_detail TEXT,
     attachment_proof TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -217,3 +223,43 @@ CREATE TABLE IF NOT EXISTS bill_activity_logs (
     details TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(64) PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE TABLE IF NOT EXISTS line_chat_sessions (
+    id TEXT PRIMARY KEY,
+    line_user_id TEXT NOT NULL UNIQUE,
+    user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL,
+    department_id TEXT REFERENCES departments(id) ON DELETE SET NULL,
+    display_name TEXT,
+    picture_url TEXT,
+    reply_mode TEXT NOT NULL DEFAULT 'AI', -- 'AI' or 'MANUAL'
+    last_message_text TEXT,
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    unread_admin_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS line_chat_sessions_user_idx ON line_chat_sessions (user_id);
+CREATE INDEX IF NOT EXISTS line_chat_sessions_dept_idx ON line_chat_sessions (department_id);
+CREATE INDEX IF NOT EXISTS line_chat_sessions_last_msg_idx ON line_chat_sessions (last_message_at DESC);
+
+CREATE TABLE IF NOT EXISTS line_chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES line_chat_sessions(id) ON DELETE CASCADE,
+    line_user_id TEXT NOT NULL,
+    sender_type TEXT NOT NULL, -- 'USER', 'AI', 'ADMIN'
+    admin_user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    reply_token TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS line_chat_messages_session_idx ON line_chat_messages (session_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS line_chat_messages_line_user_idx ON line_chat_messages (line_user_id);

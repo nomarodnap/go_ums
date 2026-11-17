@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { buttonVariants } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { LoadingEffect } from "@/components/ui/loading-effect";
@@ -10,10 +11,16 @@ import { useListDepartmentServices } from "@/lib/api/generated/departments/depar
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { BillsTable } from "./bills-table";
 
-export default function BillsPage() {
+function BillsContent() {
+  const searchParams = useSearchParams();
+  const statusParam = searchParams.get("status");
+  const anomalyParam = searchParams.get("anomaly");
+  const queryParam = searchParams.get("q");
+
   const { data: meRes, isLoading: loadingMe } = useGetCurrentUser();
   const me = meRes?.status === 200 ? meRes.data.user : null;
   const userRole = me?.role;
+  const userPermissions = me?.permissions;
   const userDepartmentId = me?.departmentId;
 
   // In next_ums, /bills is strictly scoped to the user's assigned department
@@ -36,6 +43,16 @@ export default function BillsPage() {
 
   const isLoading = loadingMe || loadingBills || loadingServices;
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดรายการค่าใช้จ่าย..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex-1 space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -56,16 +73,34 @@ export default function BillsPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <LoadingEffect message="กำลังโหลดรายการบิล..." />
-      ) : (
-        <BillsTable
-          initialData={bills as any}
-          services={services as any}
-          showAuditStatus={true}
-          userRole={userRole}
-        />
-      )}
+      <BillsTable
+        initialData={bills as any}
+        services={services as any}
+        showAuditStatus={true}
+        userRole={userRole}
+        userPermissions={userPermissions}
+        pagePath="/bills"
+        initialSearchTerm={queryParam}
+        initialStatusFilter={statusParam}
+        initialAnomalyFilter={anomalyParam}
+        disableDrawer={true}
+      />
     </div>
+  );
+}
+
+export default function BillsPage() {
+  return (
+    <Suspense
+      fallback={
+        <LoadingEffect
+          fullScreen
+          message="กำลังโหลดรายการค่าใช้จ่าย..."
+          subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+        />
+      }
+    >
+      <BillsContent />
+    </Suspense>
   );
 }

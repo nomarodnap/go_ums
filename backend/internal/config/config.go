@@ -26,27 +26,30 @@ type Config struct {
 	MinioSecretKey string
 	MinioUseSSL    bool
 	MinioBucket    string
+	GeminiAPIKey       string
+	GeminiModel        string
+	LineMessagingToken string
+	LineChannelSecret  string
 }
 
 func LoadConfig() *Config {
 	envPaths := []string{
-		".env",
 		"backend/.env",
+		".env",
 		"../.env",
 		"../../.env",
 		"../../../.env",
 	}
-	loadedFrom := ""
+	var loadedPaths []string
 	for _, p := range envPaths {
 		if _, err := os.Stat(p); err == nil {
 			if err := godotenv.Load(p); err == nil {
-				loadedFrom = p
-				break
+				loadedPaths = append(loadedPaths, p)
 			}
 		}
 	}
-	if loadedFrom != "" {
-		log.Printf("[Config] Loaded environment variables from: %s", loadedFrom)
+	if len(loadedPaths) > 0 {
+		log.Printf("[Config] Loaded environment variables from: %v", loadedPaths)
 	} else {
 		log.Println("[Config] WARNING: No .env file found in search paths!")
 	}
@@ -114,24 +117,39 @@ func LoadConfig() *Config {
 		minioBucket = "ums-uploads"
 	}
 
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	geminiModel := os.Getenv("GEMINI_MODEL")
+	if geminiModel == "" {
+		geminiModel = "gemini-3.5-flash-lite"
+	}
+
+	lineToken := os.Getenv("LINE_MESSAGING_CHANNEL_ACCESS_TOKEN")
+	lineSecret := os.Getenv("LINE_MESSAGING_CHANNEL_SECRET")
+	log.Printf("[Config] Loaded environment: PORT=%s, GeminiModel=%s, HasGeminiKey=%v, HasLineToken=%v, HasLineSecret=%v",
+		port, geminiModel, geminiAPIKey != "", lineToken != "", lineSecret != "")
+
 	return &Config{
-		Port:          port,
-		DatabaseURL:   dbURL,
-		DirectURL:     directURL,
-		JWTSecret:     jwtSecret,
-		CORSOrigin:    corsOrigin,
-		UploadDir:     uploadDir,
-		AppURL:        appURL,
-		SMTPHost:      os.Getenv("SMTP_HOST"),
-		SMTPPort:      smtpPort,
-		SMTPUser:      os.Getenv("SMTP_USER"),
-		SMTPPass:      os.Getenv("SMTP_PASS"),
-		SMTPFromName:  os.Getenv("SMTP_FROM_NAME"),
-		SMTPFromEmail: os.Getenv("SMTP_FROM_EMAIL"),
+		Port:           port,
+		DatabaseURL:    dbURL,
+		DirectURL:      directURL,
+		JWTSecret:      jwtSecret,
+		CORSOrigin:     corsOrigin,
+		UploadDir:      uploadDir,
+		AppURL:         appURL,
+		SMTPHost:       os.Getenv("SMTP_HOST"),
+		SMTPPort:       smtpPort,
+		SMTPUser:       os.Getenv("SMTP_USER"),
+		SMTPPass:       os.Getenv("SMTP_PASS"),
+		SMTPFromName:   os.Getenv("SMTP_FROM_NAME"),
+		SMTPFromEmail:  os.Getenv("SMTP_FROM_EMAIL"),
 		MinioEndpoint:  minioEndpoint,
 		MinioAccessKey: minioAccessKey,
 		MinioSecretKey: minioSecretKey,
 		MinioUseSSL:    minioUseSSL,
 		MinioBucket:    minioBucket,
+		GeminiAPIKey:       geminiAPIKey,
+		GeminiModel:        geminiModel,
+		LineMessagingToken: lineToken,
+		LineChannelSecret:  lineSecret,
 	}
 }

@@ -10,4 +10,8 @@ export type ListDepartmentServicesParams = {
  * Optional filter by department ID
  */
 departmentId?: string;
+/**
+ * Optional filter by status: 'active', 'inactive', or 'all'
+ */
+status?: string;
 };

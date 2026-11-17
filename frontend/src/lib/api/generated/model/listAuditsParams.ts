@@ -7,7 +7,7 @@
 
 export type ListAuditsParams = {
 /**
- * Filter by status: PENDING_CORRECTION or CORRECTED
+ * Filter by status: PENDING_CORRECTION, PENDING_RECHECK, or CORRECTED
  */
 status?: string;
 };

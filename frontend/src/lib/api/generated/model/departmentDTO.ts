@@ -16,12 +16,14 @@ export interface DepartmentDTO {
   email?: string;
   fullName: string;
   id: string;
+  isActive?: boolean;
   location?: string;
   phone?: string;
   province?: string;
   responsiblePerson?: string;
   responsiblePhone?: string;
   shortName?: string;
+  suspendedAt?: string;
   type?: string;
   updatedAt: string;
 }

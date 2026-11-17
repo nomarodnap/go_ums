@@ -10,6 +10,8 @@ export interface UpdateUserInputBody {
   readonly $schema?: string;
   banned?: boolean;
   departmentId?: string;
+  /** User Email (editable if user has not set password) */
+  email?: string;
   phone?: string;
   role?: string;
 }

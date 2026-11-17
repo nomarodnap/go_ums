@@ -40,18 +40,43 @@ type StatusDataPointDTO struct {
 }
 
 type RecentAnomalyDTO struct {
-	ID                       string  `json:"id"`
-	DepartmentName           string  `json:"departmentName"`
-	UtilityType              string  `json:"utilityType"`
-	BillingMonth             int     `json:"billingMonth"`
-	BillingYear              int     `json:"billingYear"`
-	InvoiceAmount            float64 `json:"invoiceAmount"`
-	IsManualAnomaly          bool    `json:"isManualAnomaly"`
-	ManualAnomalyReason      string  `json:"manualAnomalyReason"`
-	IsLateReceive            bool    `json:"isLateReceive"`
-	IsLatePayment            bool    `json:"isLatePayment"`
-	IsOverdueMoreThan2Months bool    `json:"isOverdueMoreThan2Months"`
-	IsDisbursementOver2Months bool   `json:"isDisbursementOver2Months"`
+	ID                       string   `json:"id"`
+	BillCode                 *string  `json:"billCode,omitempty"`
+	DepartmentID             string   `json:"departmentId"`
+	DepartmentName           *string  `json:"departmentName,omitempty"`
+	DepartmentShortName      *string  `json:"departmentShortName,omitempty"`
+	UtilityType              string   `json:"utilityType"`
+	BillingMonth             int      `json:"billingMonth"`
+	BillingYear              int      `json:"billingYear"`
+	Provider                 *string  `json:"provider,omitempty"`
+	ServiceNumber            *string  `json:"serviceNumber,omitempty"`
+	InvoiceNumber            *string  `json:"invoiceNumber,omitempty"`
+	UsageAmount              *float64 `json:"usageAmount,omitempty"`
+	InvoiceAmount            *float64 `json:"invoiceAmount,omitempty"`
+	PaidAmount               *float64 `json:"paidAmount,omitempty"`
+	PaymentStatus            string   `json:"paymentStatus"`
+	InvoiceStatus            string   `json:"invoiceStatus"`
+	PaymentDocNumber         *string  `json:"paymentDocNumber,omitempty"`
+	DocType                  *string  `json:"docType,omitempty"`
+	AttachmentReceipt        *string  `json:"attachmentReceipt,omitempty"`
+	AttachmentInvoice        *string  `json:"attachmentInvoice,omitempty"`
+	IsPendingBillOnly        bool     `json:"isPendingBillOnly"`
+	DepositUnitName          *string  `json:"depositUnitName,omitempty"`
+	IsReviewed               *bool    `json:"isReviewed,omitempty"`
+	AuditStatus              *string  `json:"auditStatus,omitempty"`
+	IsManualAnomaly          *bool    `json:"isManualAnomaly,omitempty"`
+	ManualAnomalyReason      *string  `json:"manualAnomalyReason,omitempty"`
+	ManualAnomalyDetail      *string  `json:"manualAnomalyDetail,omitempty"`
+	IsLateReceive            *bool    `json:"isLateReceive,omitempty"`
+	IsLatePayment            *bool    `json:"isLatePayment,omitempty"`
+	IsOverdueMoreThan2Months *bool    `json:"isOverdueMoreThan2Months,omitempty"`
+	IsDisbursementOver2Months *bool   `json:"isDisbursementOver2Months,omitempty"`
+	IsWrongMonth             *bool    `json:"isWrongMonth,omitempty"`
+	IsPhoneOverLimit         *bool    `json:"isPhoneOverLimit,omitempty"`
+	IsPhoneUsageOverLimit    *bool    `json:"isPhoneUsageOverLimit,omitempty"`
+	IsWrongBudget            *bool    `json:"isWrongBudget,omitempty"`
+	IsDuplicate              *bool    `json:"isDuplicate,omitempty"`
+	IsAnomalyExpense         *bool    `json:"isAnomalyExpense,omitempty"`
 }
 
 type TopDepartmentDTO struct {
@@ -62,17 +87,20 @@ type TopDepartmentDTO struct {
 type DashboardSummaryOutput struct {
 	Body struct {
 		Scope                     string                `json:"scope"`
+		Period                    string                `json:"period"`
 		IsAdmin                   bool                  `json:"isAdmin"`
 		DepartmentName            string                `json:"departmentName"`
 		DepartmentShortName       string                `json:"departmentShortName"`
 		TotalInvoicesCurrentMonth int                   `json:"totalInvoicesCurrentMonth"`
 		TotalPendingBills         int                   `json:"totalPendingBills"`
 		TotalPaidCurrentMonth     float64               `json:"totalPaidCurrentMonth"`
+		TotalPaidBills            int                   `json:"totalPaidBills"`
 		TotalAnomalies            int                   `json:"totalAnomalies"`
 		RecentAnomalies           []RecentAnomalyDTO    `json:"recentAnomalies"`
 		TopDepartments            []TopDepartmentDTO    `json:"topDepartments"`
 		TrendData                 []TrendDataPointDTO   `json:"trendData"`
 		StatusData                []StatusDataPointDTO  `json:"statusData"`
+		ServiceStatusData         []StatusDataPointDTO  `json:"serviceStatusData"`
 
 		// Legacy / backward-compatible fields
 		TotalAmount               float64               `json:"totalAmount"`
@@ -106,6 +134,7 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 		Scope        string `query:"scope" doc:"Scope of stats: 'department' or 'all'" default:"department"`
 		DepartmentID string `query:"departmentId" doc:"Optional target department ID"`
 		FiscalYear   int    `query:"fiscalYear" doc:"Fiscal Year filter"`
+		Period       string `query:"period" doc:"Time period: '1m', '3m', '6m', '12m'" default:"1m"`
 	}) (*DashboardSummaryOutput, error) {
 		out := &DashboardSummaryOutput{}
 
@@ -170,6 +199,28 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 		out.Body.DepartmentName = deptName
 		out.Body.DepartmentShortName = deptShortName
 
+		// Determine period and month count
+		period := input.Period
+		if period == "" {
+			period = "1m"
+		}
+		months := 1
+		switch period {
+		case "3m", "3":
+			months = 3
+			period = "3m"
+		case "6m", "6":
+			months = 6
+			period = "6m"
+		case "12m", "12":
+			months = 12
+			period = "12m"
+		default:
+			months = 1
+			period = "1m"
+		}
+		out.Body.Period = period
+
 		// Current billing period
 		now := time.Now()
 		currentMonth := int(now.Month())
@@ -180,46 +231,61 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 		effectiveYear := currentYear
 		effectiveMonth := currentMonth
 
-		// 1. KPI: บิลบันทึกเข้าระบบ (เดือนนี้)
+		startMonth := effectiveMonth - (months - 1)
+		startYear := effectiveYear
+		for startMonth <= 0 {
+			startMonth += 12
+			startYear -= 1
+		}
+		startVal := startYear*12 + startMonth
+		endVal := effectiveYear*12 + effectiveMonth
+
+		// 1. KPI: บิลบันทึกเข้าระบบ
 		if scope == "all" {
 			_ = pool.QueryRow(ctx, `
 				SELECT COUNT(*) FROM utility_bills 
-				WHERE billing_month = $1 AND billing_year = $2
-			`, effectiveMonth, effectiveYear).Scan(&out.Body.TotalInvoicesCurrentMonth)
+				WHERE (billing_year * 12 + billing_month) BETWEEN $1 AND $2
+			`, startVal, endVal).Scan(&out.Body.TotalInvoicesCurrentMonth)
 		} else {
 			_ = pool.QueryRow(ctx, `
 				SELECT COUNT(*) FROM utility_bills 
-				WHERE billing_month = $1 AND billing_year = $2 AND department_id = $3
-			`, effectiveMonth, effectiveYear, targetDeptID).Scan(&out.Body.TotalInvoicesCurrentMonth)
+				WHERE (billing_year * 12 + billing_month) BETWEEN $1 AND $2 AND department_id = $3
+			`, startVal, endVal, targetDeptID).Scan(&out.Body.TotalInvoicesCurrentMonth)
 		}
 
-		// 2. KPI: เบิกจ่ายแล้ว (เดือนนี้)
+		// 2. KPI: เบิกจ่ายแล้ว
 		if scope == "all" {
 			_ = pool.QueryRow(ctx, `
-				SELECT COALESCE(SUM(paid_amount), 0) FROM utility_bills 
-				WHERE payment_status = 'PAID' AND billing_month = $1 AND billing_year = $2
-			`, effectiveMonth, effectiveYear).Scan(&out.Body.TotalPaidCurrentMonth)
+				SELECT COUNT(*), COALESCE(SUM(paid_amount), 0) FROM utility_bills 
+				WHERE payment_status = 'PAID' AND (billing_year * 12 + billing_month) BETWEEN $1 AND $2
+			`, startVal, endVal).Scan(&out.Body.TotalPaidBills, &out.Body.TotalPaidCurrentMonth)
 		} else {
 			_ = pool.QueryRow(ctx, `
-				SELECT COALESCE(SUM(paid_amount), 0) FROM utility_bills 
-				WHERE payment_status = 'PAID' AND billing_month = $1 AND billing_year = $2 AND department_id = $3
-			`, effectiveMonth, effectiveYear, targetDeptID).Scan(&out.Body.TotalPaidCurrentMonth)
+				SELECT COUNT(*), COALESCE(SUM(paid_amount), 0) FROM utility_bills 
+				WHERE payment_status = 'PAID' AND (billing_year * 12 + billing_month) BETWEEN $1 AND $2 AND department_id = $3
+			`, startVal, endVal, targetDeptID).Scan(&out.Body.TotalPaidBills, &out.Body.TotalPaidCurrentMonth)
 		}
 
-		// 3. KPI: ค้างชำระ (ทั้งหมด)
+		// 3. KPI: ค้างชำระ (สะสมรวมทั้งระบบ ไม่ขึ้นกับช่วงเวลาเดือน)
 		if scope == "all" {
 			_ = pool.QueryRow(ctx, `
-				SELECT COUNT(*) FROM utility_bills 
+				SELECT 
+					COUNT(*),
+					COALESCE(SUM(COALESCE(invoice_amount, estimated_amount, 0)), 0)
+				FROM utility_bills 
 				WHERE payment_status = 'PENDING'
-			`).Scan(&out.Body.TotalPendingBills)
+			`).Scan(&out.Body.TotalPendingBills, &out.Body.PendingAmount)
 		} else {
 			_ = pool.QueryRow(ctx, `
-				SELECT COUNT(*) FROM utility_bills 
+				SELECT 
+					COUNT(*),
+					COALESCE(SUM(COALESCE(invoice_amount, estimated_amount, 0)), 0)
+				FROM utility_bills 
 				WHERE payment_status = 'PENDING' AND department_id = $1
-			`, targetDeptID).Scan(&out.Body.TotalPendingBills)
+			`, targetDeptID).Scan(&out.Body.TotalPendingBills, &out.Body.PendingAmount)
 		}
 
-		// 4. KPI: ตรวจสอบพบความผิดปกติ (Unreviewed anomalies)
+		// 4. KPI: ตรวจสอบพบความผิดปกติ (Unreviewed anomalies in period)
 		anomalyQuery := `
 			SELECT COUNT(DISTINCT b.id)
 			FROM utility_bills b
@@ -230,30 +296,57 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 				a.is_wrong_month = true OR a.is_phone_over_limit = true OR a.is_phone_usage_over_limit = true OR
 				a.is_wrong_budget = true OR a.is_duplicate = true OR a.is_anomaly_expense = true
 			) AND (b.is_reviewed = false OR b.is_reviewed IS NULL)
+			AND (b.billing_year * 12 + b.billing_month) BETWEEN $1 AND $2
 		`
 		if scope == "all" {
-			_ = pool.QueryRow(ctx, anomalyQuery).Scan(&out.Body.TotalAnomalies)
+			_ = pool.QueryRow(ctx, anomalyQuery, startVal, endVal).Scan(&out.Body.TotalAnomalies)
 		} else {
-			_ = pool.QueryRow(ctx, anomalyQuery+" AND b.department_id = $1", targetDeptID).Scan(&out.Body.TotalAnomalies)
+			_ = pool.QueryRow(ctx, anomalyQuery+" AND b.department_id = $3", startVal, endVal, targetDeptID).Scan(&out.Body.TotalAnomalies)
 		}
 
-		// 5. Recent Anomalies Table (Top 5)
+		// 5. Recent Anomalies Table (Top 5 in period)
 		recentQuery := `
 			SELECT 
 				b.id,
+				b.bill_code,
+				b.department_id,
 				COALESCE(d.full_name, 'ไม่ระบุ'),
+				d.short_name,
 				b.utility_type,
 				b.billing_month,
 				b.billing_year,
-				COALESCE(b.invoice_amount, 0),
-				COALESCE(a.is_manual_anomaly, false),
-				COALESCE(a.manual_anomaly_reason, ''),
-				COALESCE(a.is_late_receive, false),
-				COALESCE(a.is_late_payment, false),
-				COALESCE(a.is_overdue_more_than_2_months, false),
-				COALESCE(a.is_disbursement_over_2_months, false)
+				b.provider,
+				b.service_number,
+				b.invoice_number,
+				b.usage_amount,
+				b.invoice_amount,
+				b.paid_amount,
+				COALESCE(b.payment_status, 'PENDING'),
+				COALESCE(b.invoice_status, 'RECEIVED'),
+				b.payment_doc_number,
+				b.doc_type,
+				b.attachment_receipt,
+				b.attachment_invoice,
+				COALESCE(b.is_pending_bill_only, false),
+				dep.full_name,
+				b.is_reviewed,
+				COALESCE(a.status, 'PENDING_CORRECTION'),
+				a.is_manual_anomaly,
+				a.manual_anomaly_reason,
+				a.manual_anomaly_detail,
+				a.is_late_receive,
+				a.is_late_payment,
+				a.is_overdue_more_than_2_months,
+				a.is_disbursement_over_2_months,
+				a.is_wrong_month,
+				a.is_phone_over_limit,
+				a.is_phone_usage_over_limit,
+				a.is_wrong_budget,
+				a.is_duplicate,
+				a.is_anomaly_expense
 			FROM utility_bills b
 			LEFT JOIN departments d ON b.department_id = d.id
+			LEFT JOIN departments dep ON b.deposit_unit_id = dep.id
 			LEFT JOIN audits a ON b.id = a.utility_bill_id
 			WHERE (
 				a.is_manual_anomaly = true OR a.is_late_receive = true OR a.is_late_payment = true OR
@@ -261,23 +354,31 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 				a.is_wrong_month = true OR a.is_phone_over_limit = true OR a.is_phone_usage_over_limit = true OR
 				a.is_wrong_budget = true OR a.is_duplicate = true OR a.is_anomaly_expense = true
 			) AND (b.is_reviewed = false OR b.is_reviewed IS NULL)
+			AND (b.billing_year * 12 + b.billing_month) BETWEEN $1 AND $2
 		`
 		var rRows pgx.Rows
 		var rErr error
 		if scope == "all" {
-			rRows, rErr = pool.Query(ctx, recentQuery+" ORDER BY b.created_at DESC LIMIT 5")
+			rRows, rErr = pool.Query(ctx, recentQuery+" ORDER BY b.created_at DESC LIMIT 5", startVal, endVal)
 		} else {
-			rRows, rErr = pool.Query(ctx, recentQuery+" AND b.department_id = $1 ORDER BY b.created_at DESC LIMIT 5", targetDeptID)
+			rRows, rErr = pool.Query(ctx, recentQuery+" AND b.department_id = $3 ORDER BY b.created_at DESC LIMIT 5", startVal, endVal, targetDeptID)
 		}
 		if rErr == nil {
 			defer rRows.Close()
 			for rRows.Next() {
 				var an RecentAnomalyDTO
-				if rRows.Scan(
-					&an.ID, &an.DepartmentName, &an.UtilityType, &an.BillingMonth, &an.BillingYear,
-					&an.InvoiceAmount, &an.IsManualAnomaly, &an.ManualAnomalyReason,
+				if err := rRows.Scan(
+					&an.ID, &an.BillCode, &an.DepartmentID, &an.DepartmentName, &an.DepartmentShortName,
+					&an.UtilityType, &an.BillingMonth, &an.BillingYear,
+					&an.Provider, &an.ServiceNumber, &an.InvoiceNumber, &an.UsageAmount,
+					&an.InvoiceAmount, &an.PaidAmount, &an.PaymentStatus, &an.InvoiceStatus,
+					&an.PaymentDocNumber, &an.DocType, &an.AttachmentReceipt, &an.AttachmentInvoice,
+					&an.IsPendingBillOnly, &an.DepositUnitName, &an.IsReviewed, &an.AuditStatus,
+					&an.IsManualAnomaly, &an.ManualAnomalyReason, &an.ManualAnomalyDetail,
 					&an.IsLateReceive, &an.IsLatePayment, &an.IsOverdueMoreThan2Months, &an.IsDisbursementOver2Months,
-				) == nil {
+					&an.IsWrongMonth, &an.IsPhoneOverLimit, &an.IsPhoneUsageOverLimit,
+					&an.IsWrongBudget, &an.IsDuplicate, &an.IsAnomalyExpense,
+				); err == nil {
 					out.Body.RecentAnomalies = append(out.Body.RecentAnomalies, an)
 				}
 			}
@@ -293,12 +394,12 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 				SELECT d.full_name, COALESCE(SUM(b.paid_amount), 0) AS total_paid
 				FROM utility_bills b
 				INNER JOIN departments d ON b.department_id = d.id
-				WHERE b.payment_status = 'PAID'
+				WHERE b.payment_status = 'PAID' AND (b.billing_year * 12 + b.billing_month) BETWEEN $1 AND $2
 				GROUP BY d.id, d.full_name
 				ORDER BY total_paid DESC
 				LIMIT 5
 			`
-			tRows, tErr := pool.Query(ctx, topQuery)
+			tRows, tErr := pool.Query(ctx, topQuery, startVal, endVal)
 			if tErr == nil {
 				defer tRows.Close()
 				for tRows.Next() {
@@ -360,18 +461,53 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 			out.Body.TrendData = append(out.Body.TrendData, pt)
 		}
 
-		// 8. Status Data (Pie Chart: เบิกจ่ายแล้ว vs ค้างชำระ)
+		// 8. Status Data (Pie Chart: เบิกจ่ายแล้ว vs ค้างชำระ ในช่วงเวลาที่เลือก)
 		var paidCount, pendingCount int
 		if scope == "all" {
-			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PAID'").Scan(&paidCount)
-			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PENDING'").Scan(&pendingCount)
+			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PAID' AND (billing_year * 12 + billing_month) BETWEEN $1 AND $2", startVal, endVal).Scan(&paidCount)
+			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PENDING' AND (billing_year * 12 + billing_month) BETWEEN $1 AND $2", startVal, endVal).Scan(&pendingCount)
 		} else {
-			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PAID' AND department_id = $1", targetDeptID).Scan(&paidCount)
-			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PENDING' AND department_id = $1", targetDeptID).Scan(&pendingCount)
+			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PAID' AND department_id = $1 AND (billing_year * 12 + billing_month) BETWEEN $2 AND $3", targetDeptID, startVal, endVal).Scan(&paidCount)
+			_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM utility_bills WHERE payment_status = 'PENDING' AND department_id = $1 AND (billing_year * 12 + billing_month) BETWEEN $2 AND $3", targetDeptID, startVal, endVal).Scan(&pendingCount)
 		}
 		out.Body.StatusData = []StatusDataPointDTO{
 			{Name: "เบิกจ่ายแล้ว", Value: float64(paidCount), Color: "var(--chart-2)"},
 			{Name: "ค้างชำระ", Value: float64(pendingCount), Color: "var(--chart-4)"},
+		}
+
+		// 8.2 Service Status Data (Pie Chart: สถานะหมายเลขที่บันทึกเข้าระบบและยังไม่ได้บันทึกเข้าระบบ)
+		var recordedCount, unrecordedCount int
+		serviceStatusQuery := `
+			WITH active_s AS (
+				SELECT DISTINCT department_id, utility_type, service_number
+				FROM department_services
+				WHERE is_active = true
+					AND ($3::text = '' OR department_id = $3)
+			),
+			period_b AS (
+				SELECT DISTINCT department_id, utility_type, service_number
+				FROM utility_bills
+				WHERE (billing_year * 12 + billing_month) BETWEEN $1 AND $2
+					AND ($3::text = '' OR department_id = $3)
+			)
+			SELECT 
+				(SELECT COUNT(*) FROM period_b) AS recorded_count,
+				(SELECT COUNT(*) FROM active_s s WHERE NOT EXISTS (
+					SELECT 1 FROM period_b b 
+					WHERE b.department_id = s.department_id 
+						AND b.utility_type = s.utility_type 
+						AND b.service_number = s.service_number
+				)) AS unrecorded_count
+		`
+		var sDeptParam string
+		if scope == "department" && targetDeptID != "" {
+			sDeptParam = targetDeptID
+		}
+		_ = pool.QueryRow(ctx, serviceStatusQuery, startVal, endVal, sDeptParam).Scan(&recordedCount, &unrecordedCount)
+
+		out.Body.ServiceStatusData = []StatusDataPointDTO{
+			{Name: "บันทึกเข้าระบบแล้ว", Value: float64(recordedCount), Color: "var(--chart-1)"},
+			{Name: "ยังไม่ได้บันทึกเข้าระบบ", Value: float64(unrecordedCount), Color: "var(--chart-3)"},
 		}
 
 		// 9. Legacy Totals & Monthly Trends (Backward compatibility)
@@ -379,7 +515,7 @@ func RegisterDashboardRoutes(api huma.API, pool *pgxpool.Pool) {
 			SELECT 
 				COALESCE(SUM(invoice_amount), 0),
 				COALESCE(SUM(paid_amount), 0),
-				COALESCE(SUM(CASE WHEN payment_status = 'PENDING' THEN invoice_amount ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN payment_status = 'PENDING' THEN COALESCE(invoice_amount, estimated_amount, 0) ELSE 0 END), 0),
 				COUNT(*)
 			FROM utility_bills
 			WHERE 1=1

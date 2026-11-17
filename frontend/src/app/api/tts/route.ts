@@ -1,0 +1,150 @@
+import { type NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
+
+function cleanForSpeech(raw: string): string {
+  return raw
+    .replace(/[*#`_~]/g, " ")
+    .replace(/https?:\/\/\S+/g, "")
+    // Remove emojis
+    .replace(
+      /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+      ""
+    )
+    .replace(/[-•|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitIntoChunks(text: string, maxLen = 175): string[] {
+  if (text.length <= maxLen) return [text];
+  const chunks: string[] = [];
+  const sentences = text.split(/(?<=[.!?\n\r])\s+|(?<=[,])\s+/);
+  let current = "";
+
+  for (const s of sentences) {
+    if ((current + " " + s).trim().length <= maxLen) {
+      current = (current + " " + s).trim();
+    } else {
+      if (current) chunks.push(current);
+      if (s.length > maxLen) {
+        const words = s.split(" ");
+        let sub = "";
+        for (const w of words) {
+          if ((sub + " " + w).trim().length <= maxLen) {
+            sub = (sub + " " + w).trim();
+          } else {
+            if (sub) chunks.push(sub);
+            sub = w.slice(0, maxLen);
+          }
+        }
+        if (sub) chunks.push(sub);
+        current = "";
+      } else {
+        current = s;
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.filter((c) => c.trim().length > 0);
+}
+
+async function fetchGoogleTTSAudio(text: string): Promise<Buffer> {
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=th&client=tw-ob&q=${encodeURIComponent(
+    text
+  )}`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`TTS upstream returned status ${res.status}`);
+  }
+
+  const arrayBuf = await res.arrayBuffer();
+  return Buffer.from(arrayBuf);
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const rawText = searchParams.get("text") || "";
+
+  const text = cleanForSpeech(rawText).slice(0, 500);
+  if (!text) {
+    return NextResponse.json(
+      { error: "Text parameter is required" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const chunks = splitIntoChunks(text, 175);
+    // Limit to at most 4 chunks (~700 chars max speech per request)
+    const activeChunks = chunks.slice(0, 4);
+
+    const buffers: Buffer[] = [];
+    for (const chunk of activeChunks) {
+      const buf = await fetchGoogleTTSAudio(chunk);
+      buffers.push(buf);
+    }
+
+    const combined = Buffer.concat(buffers);
+
+    return new Response(combined, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": combined.length.toString(),
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+      },
+    });
+  } catch (error: any) {
+    console.error("[TTS API Error]:", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to generate speech audio" },
+      { status: 502 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const rawText = typeof body?.text === "string" ? body.text : "";
+    const text = cleanForSpeech(rawText).slice(0, 500);
+
+    if (!text) {
+      return NextResponse.json(
+        { error: "Text parameter is required" },
+        { status: 400 }
+      );
+    }
+
+    const chunks = splitIntoChunks(text, 175).slice(0, 4);
+    const buffers: Buffer[] = [];
+    for (const chunk of chunks) {
+      const buf = await fetchGoogleTTSAudio(chunk);
+      buffers.push(buf);
+    }
+
+    const combined = Buffer.concat(buffers);
+    return new Response(combined, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Content-Length": combined.length.toString(),
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+      },
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || "Failed to generate speech audio" },
+      { status: 500 }
+    );
+  }
+}
+

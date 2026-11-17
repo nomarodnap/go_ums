@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useGetBillTracking } from "@/lib/api/generated/bills/bills";
 import { TrackingDashboard } from "./tracking-dashboard";
+import { LoadingEffect } from "@/components/ui/loading-effect";
 
 export default function BillTrackingPage() {
   const currentDate = new Date();
@@ -24,12 +25,22 @@ export default function BillTrackingPage() {
       ? trackingRes.data.summary
       : undefined;
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดข้อมูลติดตามความคืบหน้า..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex-1 space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            ติดตามสถานะบิล
+            ติดตามความคืบหน้า
           </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             ตรวจสอบความคืบหน้าการบันทึกและการชำระเงินค่าสาธารณูปโภคประจำเดือน

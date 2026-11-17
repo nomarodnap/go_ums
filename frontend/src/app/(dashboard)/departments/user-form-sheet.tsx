@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useListRoles } from "@/lib/api/generated/roles/roles";
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -44,24 +46,56 @@ export function UserFormSheet({
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>(
     user.departmentId || department.id,
   );
+  const { data: rolesRes } = useListRoles();
+  const availableRoles = useMemo(() => {
+    if (Array.isArray(rolesRes?.data) && rolesRes.data.length > 0) {
+      return rolesRes.data;
+    }
+    return [
+      { id: "user", name: "ผู้ใช้งานทั่วไป" },
+      { id: "admin", name: "ผู้ดูแลระบบ" },
+      { id: "central_staff", name: "เจ้าหน้าที่ส่วนกลาง" },
+      { id: "regional_staff", name: "เจ้าหน้าที่ภูมิภาค" },
+      { id: "auditor", name: "ผู้ตรวจสอบภายใน (กตน.)" },
+    ];
+  }, [rolesRes]);
   const [role, setRole] = useState(user.role || "user");
   const [phone, setPhone] = useState(user.phone || "");
+  const [email, setEmail] = useState(user.email || "");
+  const [errorEmail, setErrorEmail] = useState("");
+
+  const isPendingVerification = !user.hasPassword && !user.banned;
 
   useEffect(() => {
     if (open) {
       setSelectedDepartmentId(user.departmentId || department.id);
       setRole(user.role || "user");
       setPhone(user.phone || "");
+      setEmail(user.email || "");
+      setErrorEmail("");
     }
   }, [open, user, department]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (isPendingVerification) {
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail) {
+        setErrorEmail("กรุณาระบุอีเมล");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        setErrorEmail("รูปแบบอีเมลไม่ถูกต้อง (เช่น example@fisheries.go.th)");
+        return;
+      }
+    }
+
     try {
       await updateMutation.mutateAsync({
         id: user.id,
         data: {
+          email: isPendingVerification ? email.trim() : undefined,
           role,
           departmentId: selectedDepartmentId,
           phone: phone.trim() || undefined,
@@ -83,7 +117,7 @@ export function UserFormSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-md">
+      <SheetContent className="overflow-y-auto w-full sm:max-w-xl md:max-w-2xl">
         <SheetHeader>
           <SheetTitle className="text-foreground">แก้ไขข้อมูลผู้ใช้</SheetTitle>
           <SheetDescription>
@@ -106,31 +140,88 @@ export function UserFormSheet({
           </div>
 
           <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="email" className="text-foreground">
+                อีเมล {isPendingVerification && <span className="text-destructive">*</span>}
+              </Label>
+              {isPendingVerification ? (
+                <Badge
+                  variant="outline"
+                  className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px] font-medium"
+                >
+                  รอยืนยันอีเมล (แก้ไขได้)
+                </Badge>
+              ) : user.hasPassword ? (
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border-emerald-600/20 text-[10px] font-medium"
+                >
+                  ตั้งรหัสผ่านแล้ว
+                </Badge>
+              ) : null}
+            </div>
+            <Input
+              id="email"
+              type="email"
+              inputMode="email"
+              value={email}
+              disabled={!isPendingVerification}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errorEmail && (!e.target.value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value.trim()))) {
+                  setErrorEmail("");
+                }
+              }}
+              onBlur={() => {
+                if (isPendingVerification) {
+                  const val = email.trim();
+                  if (!val) {
+                    setErrorEmail("กรุณาระบุอีเมล");
+                  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                    setErrorEmail("รูปแบบอีเมลไม่ถูกต้อง (เช่น example@fisheries.go.th)");
+                  } else {
+                    setErrorEmail("");
+                  }
+                }
+              }}
+              placeholder="เช่น user@fisheries.go.th"
+              className={
+                !isPendingVerification
+                  ? "bg-muted text-muted-foreground cursor-not-allowed opacity-80"
+                  : errorEmail
+                    ? "border-rose-500 ring-2 ring-rose-500/20"
+                    : ""
+              }
+            />
+            {errorEmail ? (
+              <span className="text-xs text-destructive">{errorEmail}</span>
+            ) : isPendingVerification ? (
+              <span className="text-xs text-muted-foreground">
+                สามารถแก้ไขอีเมลได้เนื่องจากผู้ใช้งานยังไม่ได้ตั้งรหัสผ่าน
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                ไม่สามารถแก้ไขอีเมลได้หลังจากผู้ใช้งานตั้งรหัสผ่านเรียบร้อยแล้ว
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="role" className="text-foreground">
               สิทธิ์การใช้งาน (Role)
             </Label>
             <Select value={role} onValueChange={(val) => val && setRole(val)}>
               <SelectTrigger id="role">
                 <SelectValue placeholder="เลือกสิทธิ์">
-                  {role === "user"
-                    ? "ผู้ใช้งานทั่วไป (User)"
-                    : role === "admin"
-                      ? "ผู้ดูแลระบบ (Admin)"
-                      : role === "central_staff"
-                        ? "เจ้าหน้าที่ส่วนกลาง (Central Staff)"
-                        : role === "regional_staff"
-                          ? "เจ้าหน้าที่ภูมิภาค (Regional Staff)"
-                          : role === "auditor"
-                            ? "ผู้ตรวจสอบ (Auditor)"
-                            : role}
+                  {availableRoles.find((r) => r.id === role)?.name || role}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">ผู้ใช้งานทั่วไป (User)</SelectItem>
-                <SelectItem value="admin">ผู้ดูแลระบบ (Admin)</SelectItem>
-                <SelectItem value="central_staff">เจ้าหน้าที่ส่วนกลาง (Central Staff)</SelectItem>
-                <SelectItem value="regional_staff">เจ้าหน้าที่ภูมิภาค (Regional Staff)</SelectItem>
-                <SelectItem value="auditor">ผู้ตรวจสอบ (Auditor)</SelectItem>
+                {availableRoles.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

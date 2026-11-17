@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/drawer";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { canReviewBills, canFlagAnomaly } from "@/lib/permissions";
 import { VisxSparkline } from "@/components/charts/visx-sparkline";
 import { RiveStatusIndicator } from "@/components/ui/rive-status-indicator";
 import {
@@ -39,6 +41,8 @@ interface BillQuickViewDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userRole?: string;
+  userPermissions?: string[] | null;
+  pagePath?: string;
   onReview?: () => void;
   onFlag?: () => void;
   isPending?: boolean;
@@ -49,10 +53,22 @@ export function BillQuickViewDrawer({
   open,
   onOpenChange,
   userRole,
+  userPermissions,
+  pagePath = "/bills",
   onReview,
   onFlag,
   isPending,
 }: BillQuickViewDrawerProps) {
+  const canReview = canReviewBills(
+    { role: userRole, permissions: userPermissions },
+    pagePath,
+  );
+
+  const canFlag = canFlagAnomaly(
+    { role: userRole, permissions: userPermissions },
+    pagePath,
+  );
+
   if (!bill) return null;
 
   const getUtilityIcon = (type: string) => {
@@ -121,12 +137,26 @@ export function BillQuickViewDrawer({
               {bill.isReviewed && (
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
                   <RiveStatusIndicator size={18} status="success" />
-                  <span>ตรวจแล้ว</span>
+                  <span>
+                    ตรวจสอบแล้ว
+                    {bill.reviewedBy ? ` โดย ${bill.reviewedBy}` : ""}
+                    {bill.reviewedAt
+                      ? ` เมื่อ ${format(new Date(bill.reviewedAt), "dd MMM yy HH:mm", { locale: th })}`
+                      : ""}
+                  </span>
                 </div>
               )}
               {bill.paymentStatus === "PAID" ? (
-                <Badge variant="success" className="text-xs py-1 px-3">
-                  เบิกจ่ายแล้ว
+                <Badge
+                  variant={(bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "") ? "success" : "default"}
+                  className={cn(
+                    "text-xs py-1 px-3",
+                    (bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "")
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                  )}
+                >
+                  {(bill.attachmentReceipt && bill.attachmentReceipt.trim() !== "") ? "ได้ใบเสร็จแล้ว" : "เบิกจ่ายแล้ว"}
                 </Badge>
               ) : bill.paymentStatus === "WAITING" ? (
                 <Badge variant="outline" className="text-xs py-1 px-3">
@@ -235,12 +265,21 @@ export function BillQuickViewDrawer({
           )}
 
           {/* Audit Notes if any */}
-          {bill.isManualAnomaly && bill.manualAnomalyReason && (
-            <div className="p-4 rounded-2xl border border-red-500/20 bg-red-500/10 space-y-1">
+          {bill.isManualAnomaly && (bill.manualAnomalyReason || bill.manualAnomalyDetail) && (
+            <div className="p-4 rounded-2xl border border-red-500/20 bg-red-500/10 space-y-1.5">
               <span className="text-xs font-semibold text-red-500 flex items-center gap-1.5">
                 <Flag className="w-3.5 h-3.5" /> ข้อสังเกตความผิดปกติ
               </span>
-              <p className="text-xs text-red-400">{bill.manualAnomalyReason}</p>
+              {bill.manualAnomalyReason && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                  {bill.manualAnomalyReason}
+                </p>
+              )}
+              {bill.manualAnomalyDetail && (
+                <p className="text-xs text-red-600/90 dark:text-red-300/90 whitespace-pre-line leading-relaxed">
+                  {bill.manualAnomalyDetail}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -254,7 +293,7 @@ export function BillQuickViewDrawer({
           </DrawerClose>
 
           <div className="flex items-center gap-2">
-            {onFlag && (
+            {onFlag && canFlag && (
               <Button
                 variant="outline"
                 size="sm"
@@ -267,7 +306,7 @@ export function BillQuickViewDrawer({
               </Button>
             )}
 
-            {onReview && (
+            {onReview && canReview && (
               <Button
                 variant="default"
                 size="sm"
@@ -276,7 +315,7 @@ export function BillQuickViewDrawer({
                 className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                {bill.isReviewed ? "ยกเลิกตรวจรับรอง" : "ตรวจรับรองเรียบร้อย"}
+                {bill.isReviewed ? "ยกเลิกการตรวจรับรอง" : "ตรวจสอบแล้ว"}
               </Button>
             )}
 

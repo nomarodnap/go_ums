@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { createBill, getLatestEstimatedAmount } from "@/server/actions/bills";
 import { Button } from "@/components/ui/button";
@@ -32,17 +33,27 @@ import {
   CalendarClock,
   UploadCloud,
   X,
-  Settings,
   Banknote,
   AlertCircle,
   FileText,
   Gauge,
   MapPin,
+  AlertTriangle,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
-import { DepartmentServicesSheet } from "@/app/(dashboard)/departments/department-services-sheet";
-import { DepartmentCombobox } from "@/components/ui/department-combobox";
+import { useListBills } from "@/lib/api/generated/bills/bills";
+import {
+  type AICategorizeBillResponse,
+  type AIExtractDocumentResponse,
+  extractAIErrorMessage,
+  useCategorizeBill,
+} from "@/lib/api/ai-hooks";
+import { toast } from "sonner";
 import { FileUploadDropzone } from "@/components/ui/file-upload-dropzone";
 import { ServiceNumberPresets } from "@/components/bills/service-number-presets";
+import { ServiceNumberCombobox } from "@/components/bills/service-number-combobox";
+import { BillAIAssistant } from "@/components/bills/bill-ai-assistant";
 import { cn } from "@/lib/utils";
 
 type Department = {
@@ -66,41 +77,74 @@ type BudgetCodeOption = {
   isActive?: boolean;
 };
 
+function getAccountCodeForUtility(val: string): string {
+  switch (val) {
+    case "ค่าไฟฟ้า":
+      return "5104020101";
+    case "ค่าประปา&น้ำบาดาล":
+      return "5104020103";
+    case "ค่าโทรศัพท์":
+      return "5104020105";
+    case "ค่าสื่อสาร&โทรคมนาคม":
+      return "5104020106";
+    case "ค่าบริการไปรษณีย์":
+      return "5104020107";
+    default:
+      return "";
+  }
+}
+
+export interface CreateBillFormInitialValues {
+  departmentId?: string;
+  utilityType?: string;
+  serviceNumber?: string;
+  billingMonth?: string;
+}
+
 export function CreateBillForm({
   departments,
   services = [],
   budgetCodes = [],
   defaultDepartmentId,
+  initialValues,
 }: {
   departments: Department[];
   services?: any[];
   budgetCodes?: BudgetCodeOption[];
   defaultDepartmentId?: string;
+  initialValues?: CreateBillFormInitialValues;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [state, formAction, isPending] = useActionState(createBill, null);
   const fieldErrors =
     typeof state?.error === "object"
       ? (state.error as Record<string, string[]>)
       : {};
 
-  const [selectedDept, setSelectedDept] = useState(defaultDepartmentId || "");
-  const [selectedUtility, setSelectedUtility] = useState("");
-  const [selectedServiceNumbers, setSelectedServiceNumbers] = useState<
-    string[]
-  >([]);
+  const initialDeptId = initialValues?.departmentId || defaultDepartmentId || "";
+  const [selectedDept, setSelectedDept] = useState(initialDeptId);
+  const [selectedUtility, setSelectedUtility] = useState(initialValues?.utilityType || "");
+  const [selectedServiceNumbers, setSelectedServiceNumbers] = useState<string[]>(() => {
+    if (!initialValues?.serviceNumber) return [];
+    return initialValues.serviceNumber
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  });
   const [paymentStatus, setPaymentStatus] = useState("PENDING");
   const [invoiceStatus, setInvoiceStatus] = useState("NOT_RECEIVED");
+  const [receiptStatus, setReceiptStatus] = useState<string>("NOT_RECEIVED");
   const [disbursingType, setDisbursingType] = useState(() => {
-    if (defaultDepartmentId) {
-      const dept = departments.find((d) => d.id === defaultDepartmentId);
-      if (dept && !dept.costCenterCode) return "หน่วยงานฝากเบิก";
+    if (initialDeptId) {
+      const dept = departments.find((d) => d.id === initialDeptId);
+      if (dept && !dept.costCenterCode) return "หน่วยฝากเบิก";
     }
-    return "หน่วยงานที่เบิกจ่าย";
+    return "หน่วยเบิกจ่าย";
   });
   const [depositUnitId, setDepositUnitId] = useState(() => {
-    if (defaultDepartmentId) {
-      const dept = departments.find((d) => d.id === defaultDepartmentId);
+    if (initialDeptId) {
+      const dept = departments.find((d) => d.id === initialDeptId);
       if (dept?.type === "central") {
         const fin = departments.find(
           (d) =>
@@ -116,10 +160,51 @@ export function CreateBillForm({
     return "";
   });
   const [costCenterCode, setCostCenterCode] = useState("");
-  const [servicesSheetOpen, setServicesSheetOpen] = useState(false);
-  const [accountCode, setAccountCode] = useState("");
+  const [accountCode, setAccountCode] = useState(() =>
+    getAccountCodeForUtility(initialValues?.utilityType || "")
+  );
   const [budgetCode, setBudgetCode] = useState("");
-  const [billingMonthStr, setBillingMonthStr] = useState<string>("");
+  const [billingMonthStr, setBillingMonthStr] = useState<string>(
+    initialValues?.billingMonth || ""
+  );
+
+  useEffect(() => {
+    if (!initialValues) return;
+    if (initialValues.departmentId) {
+      setSelectedDept(initialValues.departmentId);
+    }
+    if (initialValues.utilityType) {
+      setSelectedUtility(initialValues.utilityType);
+      setAccountCode(getAccountCodeForUtility(initialValues.utilityType));
+    }
+    if (initialValues.serviceNumber) {
+      const numbers = initialValues.serviceNumber
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      setSelectedServiceNumbers(numbers);
+    }
+    if (initialValues.billingMonth) {
+      setBillingMonthStr(initialValues.billingMonth);
+    }
+  }, [
+    initialValues?.departmentId,
+    initialValues?.utilityType,
+    initialValues?.serviceNumber,
+    initialValues?.billingMonth,
+  ]);
+
+  useEffect(() => {
+    if (initialValues?.serviceNumber) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById("utility-invoice-section");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [initialValues?.serviceNumber]);
   const [invoiceDate, setInvoiceDate] = useState<string>("");
   const [receivedDate, setReceivedDate] = useState<string>("");
   const [sentToDisbursingDate, setSentToDisbursingDate] = useState<string>("");
@@ -136,6 +221,9 @@ export function CreateBillForm({
   const [serviceAmounts, setServiceAmounts] = useState<Record<string, string>>(
     {},
   );
+  const categorizeMutation = useCategorizeBill();
+  const [aiCategorySuggestion, setAICategorySuggestion] =
+    useState<AICategorizeBillResponse | null>(null);
 
 
   const currentFiscalYear = useMemo(() => {
@@ -150,6 +238,71 @@ export function CreateBillForm({
     const be = now.getFullYear() + 543;
     return now.getMonth() >= 9 ? be + 1 : be;
   }, [billingMonthStr]);
+
+  const [selectedBillingYear, selectedBillingMonth] = useMemo(() => {
+    if (!billingMonthStr) return [0, 0];
+    const [yr, mo] = billingMonthStr.split("-").map(Number);
+    return [yr || 0, mo || 0];
+  }, [billingMonthStr]);
+
+  // Query existing bills for the selected department, year, and month to detect duplicates
+  const { data: monthBillsRes } = useListBills(
+    selectedBillingYear && selectedBillingMonth
+      ? {
+          billingYear: selectedBillingYear,
+          billingMonth: selectedBillingMonth,
+          departmentId: selectedDept || undefined,
+        }
+      : undefined,
+    {
+      query: {
+        enabled: Boolean(selectedBillingYear && selectedBillingMonth),
+      },
+    },
+  );
+
+  const duplicateBillsMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { billId: string; billCode?: string; invoiceNumber?: string }
+    >();
+    const list = Array.isArray(monthBillsRes?.data) ? monthBillsRes.data : [];
+    for (const b of list) {
+      if (b.serviceNumber) {
+        const parts = b.serviceNumber.split(",").map((s) => s.trim()).filter(Boolean);
+        for (const p of parts) {
+          map.set(p.toLowerCase(), {
+            billId: b.id,
+            billCode: b.billCode || undefined,
+            invoiceNumber: b.invoiceNumber || undefined,
+          });
+        }
+      }
+    }
+    return map;
+  }, [monthBillsRes?.data]);
+
+  const duplicateSelectedServices = useMemo(() => {
+    return selectedServiceNumbers
+      .filter((sn) => duplicateBillsMap.has(sn.trim().toLowerCase()))
+      .map((sn) => ({
+        serviceNumber: sn,
+        ...duplicateBillsMap.get(sn.trim().toLowerCase())!,
+      }));
+  }, [selectedServiceNumbers, duplicateBillsMap]);
+
+  const hasDuplicateService = duplicateSelectedServices.length > 0;
+
+  const formattedBillingMonthThai = useMemo(() => {
+    if (!selectedBillingYear || !selectedBillingMonth) return "";
+    const THAI_MONTHS = [
+      "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+      "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+    ];
+    const monthName = THAI_MONTHS[selectedBillingMonth - 1] || "";
+    const beYear = selectedBillingYear + 543;
+    return `${monthName} ${beYear}`;
+  }, [selectedBillingYear, selectedBillingMonth]);
 
   const sortedBudgetCodes = useMemo(() => {
     if (!budgetCodes || budgetCodes.length === 0) return [];
@@ -183,7 +336,7 @@ export function CreateBillForm({
 
   useEffect(() => {
     const code =
-      disbursingType === "หน่วยงานฝากเบิก" && depositUnitId
+      disbursingType === "หน่วยฝากเบิก" && depositUnitId
         ? departments.find((d) => d.id === depositUnitId)?.costCenterCode || ""
         : departments.find((d) => d.id === selectedDept)?.costCenterCode || "";
     setCostCenterCode(code);
@@ -270,13 +423,61 @@ export function CreateBillForm({
 
   const isCentralDept = selectedDeptData?.type === "central";
 
+  const hasCostCenter = Boolean(
+    selectedDeptData?.costCenterCode &&
+      selectedDeptData.costCenterCode.trim() !== "" &&
+      selectedDeptData.costCenterCode !== "-",
+  );
+
+  const depositUnitDept = useMemo(() => {
+    if (depositUnitId) {
+      const found = departments.find((d) => d.id === depositUnitId);
+      if (found) return found;
+    }
+    if (isCentralDept && financeDept) {
+      return financeDept;
+    }
+    if (selectedDeptData?.depositUnit) {
+      return (
+        departments.find((d) => d.id === selectedDeptData.depositUnit) || null
+      );
+    }
+    return null;
+  }, [depositUnitId, departments, isCentralDept, financeDept, selectedDeptData]);
+
+  const depositUnitName =
+    depositUnitDept?.fullName ||
+    (isCentralDept ? financeDept?.fullName || "กองบริหารการคลัง" : "-");
+
+  const depositUnitCostCenter =
+    depositUnitDept?.costCenterCode ||
+    (isCentralDept ? financeDept?.costCenterCode : null) ||
+    "-";
+
   useEffect(() => {
-    if (isCentralDept && disbursingType === "หน่วยงานฝากเบิก" && financeDept) {
-      if (depositUnitId !== financeDept.id) {
-        setDepositUnitId(financeDept.id);
+    if (hasCostCenter) {
+      if (disbursingType !== "หน่วยเบิกจ่าย") {
+        setDisbursingType("หน่วยเบิกจ่าย");
+      }
+      if (depositUnitId !== "") {
+        setDepositUnitId("");
+      }
+    } else {
+      if (disbursingType !== "หน่วยฝากเบิก") {
+        setDisbursingType("หน่วยฝากเบิก");
+      }
+      if (isCentralDept && financeDept) {
+        if (depositUnitId !== financeDept.id) {
+          setDepositUnitId(financeDept.id);
+        }
+      } else {
+        const expectedDepositUnit = selectedDeptData?.depositUnit || "";
+        if (depositUnitId !== expectedDepositUnit) {
+          setDepositUnitId(expectedDepositUnit);
+        }
       }
     }
-  }, [isCentralDept, disbursingType, financeDept, depositUnitId]);
+  }, [hasCostCenter, disbursingType, depositUnitId, isCentralDept, financeDept, selectedDeptData]);
 
   const getDeptTypeName = (type: string | null | undefined) => {
     if (type === "central") return "ส่วนกลาง";
@@ -294,29 +495,14 @@ export function CreateBillForm({
 
     const dept = departments.find((d) => d.id === val);
     if (dept && !dept.costCenterCode) {
-      setDisbursingType("หน่วยงานฝากเบิก");
+      setDisbursingType("หน่วยฝากเบิก");
       if (dept.type === "central" && financeDept) {
         setDepositUnitId(financeDept.id);
       } else {
         setDepositUnitId(dept.depositUnit || "");
       }
     } else {
-      setDisbursingType("หน่วยงานที่เบิกจ่าย");
-      setDepositUnitId("");
-    }
-  };
-
-  const handleDisbursingTypeChange = (val: string | null) => {
-    if (!val) return;
-    setDisbursingType(val);
-    if (val === "หน่วยงานฝากเบิก") {
-      if (isCentralDept && financeDept) {
-        setDepositUnitId(financeDept.id);
-      } else {
-        const dept = departments.find((d) => d.id === selectedDept);
-        setDepositUnitId(dept?.depositUnit || "");
-      }
-    } else {
+      setDisbursingType("หน่วยเบิกจ่าย");
       setDepositUnitId("");
     }
   };
@@ -372,9 +558,15 @@ export function CreateBillForm({
 
   useEffect(() => {
     if (state?.success) {
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          typeof query.queryKey[0] === "string" &&
+          query.queryKey[0].startsWith("/api/bills"),
+      });
+      router.refresh();
       router.push("/bills");
     }
-  }, [state?.success, router]);
+  }, [state?.success, router, queryClient]);
 
   useEffect(() => {
     if (state?.error) {
@@ -387,11 +579,166 @@ export function CreateBillForm({
     }
   }, [state?.error]);
 
+  const handleApplyOCRResult = (
+    result: AIExtractDocumentResponse,
+    scannedFile: File,
+  ) => {
+    const resolvedUtil = result.utilityType || selectedUtility;
+    if (result.utilityType) {
+      setSelectedUtility(result.utilityType);
+      setAccountCode(
+        result.accountCode || getAccountCodeForUtility(result.utilityType),
+      );
+    }
+
+    const deptScopedServices = services.filter(
+      (s) => !selectedDept || s.departmentId === selectedDept,
+    );
+    const normalizeSvcNum = (v: string) =>
+      v.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const targetCandidate =
+      result.matchedServiceNumber || result.serviceNumber || "";
+    const normTarget = normalizeSvcNum(targetCandidate);
+    const matchedSvc =
+      deptScopedServices.find(
+        (s) => s.serviceNumber === result.matchedServiceNumber,
+      ) ||
+      deptScopedServices.find(
+        (s) =>
+          normTarget !== "" &&
+          normalizeSvcNum(String(s.serviceNumber || "")) === normTarget &&
+          (!resolvedUtil || s.utilityType === resolvedUtil),
+      );
+
+    if (matchedSvc) {
+      setSelectedServiceNumbers([matchedSvc.serviceNumber]);
+      if (result.invoiceAmount !== undefined && result.invoiceAmount > 0) {
+        setServiceAmounts({
+          [matchedSvc.serviceNumber]: result.invoiceAmount.toFixed(2),
+        });
+      }
+      if (!result.utilityType && matchedSvc.utilityType) {
+        setSelectedUtility(matchedSvc.utilityType);
+        setAccountCode(getAccountCodeForUtility(matchedSvc.utilityType));
+      }
+    } else if (
+      selectedServiceNumbers.length === 1 &&
+      result.invoiceAmount !== undefined &&
+      result.invoiceAmount > 0
+    ) {
+      setServiceAmounts({
+        [selectedServiceNumbers[0]]: result.invoiceAmount.toFixed(2),
+      });
+    }
+
+    const nextMonthStr =
+      result.billingMonthStr ||
+      (result.billingYearCE && result.billingMonth
+        ? `${result.billingYearCE}-${String(result.billingMonth).padStart(2, "0")}`
+        : "");
+    if (nextMonthStr) {
+      setBillingMonthStr(nextMonthStr);
+    }
+
+    setInvoiceStatus("RECEIVED");
+    if (result.invoiceDate) {
+      setInvoiceDate(result.invoiceDate);
+    }
+    if (result.usageAmount !== undefined && result.usageAmount !== null) {
+      setUnitsUsed(String(result.usageAmount));
+    }
+    if (result.invoiceNumber) {
+      setDocumentRef(result.invoiceNumber);
+    }
+    setSelectedInvoiceFile(scannedFile);
+
+    if (
+      result.budgetCode &&
+      (budgetCodes.length === 0 ||
+        budgetCodes.some((b) => b.code === result.budgetCode))
+    ) {
+      setBudgetCode(result.budgetCode);
+    }
+  };
+
+  const applyCategorySuggestion = (suggestion: AICategorizeBillResponse) => {
+    if (suggestion.utilityType) {
+      if (suggestion.utilityType !== selectedUtility) {
+        setSelectedUtility(suggestion.utilityType);
+        if (suggestion.matchedServiceNumber) {
+          setSelectedServiceNumbers([suggestion.matchedServiceNumber]);
+        } else {
+          setSelectedServiceNumbers([]);
+          setServiceAmounts({});
+        }
+      } else if (
+        selectedServiceNumbers.length === 0 &&
+        suggestion.matchedServiceNumber
+      ) {
+        setSelectedServiceNumbers([suggestion.matchedServiceNumber]);
+      }
+      setAccountCode(
+        suggestion.accountCode || getAccountCodeForUtility(suggestion.utilityType),
+      );
+    }
+    if (
+      suggestion.budgetCode &&
+      (budgetCodes.length === 0 ||
+        budgetCodes.some((b) => b.code === suggestion.budgetCode))
+    ) {
+      setBudgetCode(suggestion.budgetCode);
+    }
+  };
+
+  const handleSuggestCategory = async () => {
+    try {
+      const res = await categorizeMutation.mutateAsync({
+        departmentId: selectedDept || undefined,
+        provider: provider || undefined,
+        serviceNumber: selectedServiceNumbers[0] || undefined,
+        invoiceNumber: documentRef || undefined,
+        billingMonth: selectedBillingMonth || undefined,
+        billingYear: selectedBillingYear || undefined,
+        amount:
+          totalCalculatedAmount > 0 ? totalCalculatedAmount : undefined,
+        currentUtilityType: selectedUtility || undefined,
+        currentBudgetCode: budgetCode || undefined,
+      });
+      setAICategorySuggestion(res);
+      if (!selectedUtility && res.utilityType) {
+        setSelectedUtility(res.utilityType);
+        setAccountCode(
+          res.accountCode || getAccountCodeForUtility(res.utilityType),
+        );
+      }
+      if (selectedServiceNumbers.length === 0 && res.matchedServiceNumber) {
+        setSelectedServiceNumbers([res.matchedServiceNumber]);
+      }
+      if (
+        !budgetCode &&
+        res.budgetCode &&
+        (budgetCodes.length === 0 ||
+          budgetCodes.some((b) => b.code === res.budgetCode))
+      ) {
+        setBudgetCode(res.budgetCode);
+      }
+    } catch {
+      // Rendered inline below button
+    }
+  };
+
   const handleFormSubmit = (formData: FormData) => {
+    if (hasDuplicateService) {
+      toast.error(
+        `ไม่อนุญาตให้บันทึก: พบหมายเลขที่มีการบันทึกบิลในรอบบิลประจำเดือน ${formattedBillingMonthThai} แล้ว`,
+      );
+      return;
+    }
+    formData.set("receiptStatus", receiptStatus);
     if (selectedInvoiceFile) {
       formData.set("attachmentInvoice", selectedInvoiceFile);
     }
-    if (selectedReceiptFile) {
+    if (receiptStatus === "RECEIVED" && selectedReceiptFile) {
       formData.set("attachmentReceipt", selectedReceiptFile);
     }
     if (selectedDirectPaymentFile) {
@@ -436,6 +783,11 @@ export function CreateBillForm({
             </div>
           )}
 
+          <BillAIAssistant
+            departmentId={selectedDept}
+            onApplyOCRResult={handleApplyOCRResult}
+          />
+
           {/* Group 1: ข้อมูลทั่วไป */}
           <div className="space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs">
             <div className="flex items-center gap-2 border-b pb-3">
@@ -444,10 +796,8 @@ export function CreateBillForm({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.departmentId}>
-                <Label htmlFor="departmentId">
-                  หน่วยงาน <span className="text-destructive">*</span>
-                </Label>
+              <div className="grid gap-2 relative md:col-span-2" data-has-error={!!fieldErrors?.departmentId}>
+                <Label htmlFor="departmentId">ชื่อหน่วยงาน</Label>
                 <input type="hidden" name="departmentId" value={selectedDept} />
                 <Input
                   id="departmentId"
@@ -455,32 +805,21 @@ export function CreateBillForm({
                   value={selectedDeptData?.fullName || "ไม่ระบุหน่วยงาน"}
                   readOnly
                   disabled
-                  className="bg-muted/70 cursor-not-allowed font-medium text-foreground disabled:opacity-100 shadow-2xs"
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
                 <ErrorSpeechBubble message={fieldErrors?.departmentId} />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="division">อักษรย่อ</Label>
+                <Label htmlFor="disbursingType">ประเภทหน่วยงาน</Label>
+                <input type="hidden" name="disbursingType" value={disbursingType} />
                 <Input
+                  id="disbursingType"
                   type="text"
-                  id="division"
-                  value={selectedDeptData?.shortName || "-"}
-                  onChange={() => {}}
+                  value={disbursingType}
                   readOnly
-                  className="bg-muted cursor-not-allowed"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="costCenterCode">รหัสศูนย์ต้นทุน</Label>
-                <Input
-                  type="text"
-                  id="costCenterCode"
-                  value={selectedDeptData?.costCenterCode || "-"}
-                  onChange={() => {}}
-                  readOnly
-                  className="bg-muted cursor-not-allowed"
+                  disabled
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
               </div>
 
@@ -490,106 +829,201 @@ export function CreateBillForm({
                   type="text"
                   id="deptType"
                   value={getDeptTypeName(selectedDeptData?.type)}
-                  onChange={() => {}}
                   readOnly
-                  className="bg-muted cursor-not-allowed"
+                  disabled
+                  className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
                 />
               </div>
 
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.disbursingType}>
-                <Label htmlFor="disbursingType">ประเภทการเบิกจ่าย</Label>
-                <Select
-                  name={
-                    selectedDeptData?.costCenterCode
-                      ? "disbursingType"
-                      : undefined
-                  }
-                  value={disbursingType}
-                  onValueChange={handleDisbursingTypeChange}
-                  disabled={!selectedDeptData?.costCenterCode}
-                >
-                  <SelectTrigger
-                    className={
-                      !selectedDeptData?.costCenterCode
-                        ? "bg-muted cursor-not-allowed"
-                        : fieldErrors?.disbursingType
-                          ? "border-rose-500 ring-2 ring-rose-500/20"
-                          : ""
-                    }
-                  >
-                    <SelectValue placeholder="เลือกประเภท..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="หน่วยงานที่เบิกจ่าย">
-                      หน่วยงานที่เบิกจ่าย
-                    </SelectItem>
-                    <SelectItem value="หน่วยงานฝากเบิก">หน่วยงานฝากเบิก</SelectItem>
-                  </SelectContent>
-                </Select>
-                {!selectedDeptData?.costCenterCode && (
-                  <input
-                    type="hidden"
-                    name="disbursingType"
-                    value={disbursingType}
-                  />
-                )}
-                <ErrorSpeechBubble message={fieldErrors?.disbursingType} />
-              </div>
-
-              <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.depositUnitId}>
-                <Label htmlFor="depositUnit">
-                  ฝากเบิกกับหน่วยงาน{" "}
-                  {disbursingType === "หน่วยงานฝากเบิก" && (
-                    <span className="text-destructive">*</span>
-                  )}
-                </Label>
-                <div className="w-full">
-                  {isCentralDept && disbursingType === "หน่วยงานฝากเบิก" ? (
-                    <div className="space-y-1.5">
-                      <input
-                        type="hidden"
-                        name="depositUnit"
-                        value={financeDept?.id || depositUnitId}
-                      />
-                      <Input
-                        type="text"
-                        value={financeDept?.fullName || "กองบริหารการคลัง"}
-                        readOnly
-                        disabled
-                        className="bg-muted/70 cursor-not-allowed font-medium text-foreground disabled:opacity-100 shadow-2xs"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        * ระดับหน่วยงานส่วนกลาง บังคับฝากเบิกกับกองบริหารการคลังเท่านั้น
-                      </p>
-                    </div>
-                  ) : (
-                    <DepartmentCombobox
-                      departments={departments}
-                      name="depositUnit"
-                      value={depositUnitId}
-                      onValueChange={setDepositUnitId}
-                      disabled={disbursingType !== "หน่วยงานฝากเบิก"}
-                      placeholder={
-                        disbursingType === "หน่วยงานฝากเบิก"
-                          ? "ระบุหน่วยงานที่รับฝากเบิก"
-                          : "-"
-                      }
+              {hasCostCenter ? (
+                <>
+                  {/* กรณีมีรหัสศูนย์ต้นทุน: บังคับเป็นหน่วยเบิกจ่าย แสดงรหัสศูนย์ต้นทุน */}
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label htmlFor="costCenterCode">รหัสศูนย์ต้นทุน</Label>
+                    <Input
+                      type="text"
+                      id="costCenterCode"
+                      value={selectedDeptData?.costCenterCode || "-"}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-mono font-medium text-foreground shadow-2xs"
                     />
-                  )}
-                  <ErrorSpeechBubble message={fieldErrors?.depositUnitId} />
-                </div>
-              </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* กรณีไม่มีรหัสศูนย์ต้นทุน: บังคับเป็นหน่วยฝากเบิก แสดงฝากเบิกกับหน่วยงาน (ล็อค) + รหัสศูนย์ต้นทุนของหน่วยงานที่ฝากให้เบิกจ่าย */}
+                  <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.depositUnitId}>
+                    <Label htmlFor="depositUnit">ฝากเบิกกับหน่วยงาน</Label>
+                    <input
+                      type="hidden"
+                      name="depositUnit"
+                      value={depositUnitDept?.id || depositUnitId}
+                    />
+                    <Input
+                      id="depositUnit"
+                      type="text"
+                      value={depositUnitName}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-medium text-foreground shadow-2xs"
+                    />
+                    <ErrorSpeechBubble message={fieldErrors?.depositUnitId} />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="depositUnitCostCenter">
+                      รหัสศูนย์ต้นทุนของหน่วยงานที่ฝากให้เบิกจ่าย
+                    </Label>
+                    <Input
+                      type="text"
+                      id="depositUnitCostCenter"
+                      value={depositUnitCostCenter}
+                      readOnly
+                      disabled
+                      className="bg-background disabled:bg-background disabled:opacity-100 disabled:cursor-not-allowed font-mono font-medium text-foreground shadow-2xs"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-muted-foreground md:col-span-2 -mt-2.5 whitespace-nowrap">
+                    * กรณีประสงค์เปลี่ยนแปลงหน่วยงานที่รับฝากเบิกจ่าย กรุณาติดต่อกลุ่มตรวจสอบภายใน (กตน.)
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
           {/* Group 2: ใบแจ้งหนี้ค่าสาธารณูปโภค */}
-          <div className="space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs">
-            <div className="flex items-center gap-2 border-b pb-3">
-              <Receipt className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold text-lg tracking-tight">
-                ใบแจ้งหนี้ค่าสาธารณูปโภค
-              </h3>
+          <div
+            id="utility-invoice-section"
+            className={cn(
+              "space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs transition-all",
+              initialValues?.serviceNumber && "ring-2 ring-primary/20 border-primary/30"
+            )}
+          >
+            <div className="flex items-center justify-between border-b pb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-lg tracking-tight">
+                  ใบแจ้งหนี้ค่าสาธารณูปโภค
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={categorizeMutation.isPending}
+                  onClick={() => void handleSuggestCategory()}
+                  className="h-8 rounded-xl text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
+                >
+                  <Sparkles className="size-3.5" />
+                  {categorizeMutation.isPending
+                    ? "กำลังวิเคราะห์หมวดหมู่..."
+                    : "แนะนำหมวดหมู่ (AI)"}
+                </Button>
+                {initialValues?.serviceNumber && (
+                  <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20 font-normal">
+                    กรอกข้อมูลอัตโนมัติจากสถานะเครื่องวัด
+                  </Badge>
+                )}
+              </div>
             </div>
+
+            {categorizeMutation.isPending && (
+              <div className="space-y-1.5 rounded-xl border bg-background/70 p-3">
+                <p className="text-xs font-medium text-primary">
+                  กำลังตรวจสอบประเภทสาธารณูปโภค รหัสแยกประเภท และรหัสงบประมาณ...
+                </p>
+                <progress
+                  aria-label="กำลังแนะนำหมวดหมู่บิลด้วย AI"
+                  className="ai-progress"
+                />
+              </div>
+            )}
+
+            {categorizeMutation.isError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2"
+              >
+                <AlertTriangle className="size-4 shrink-0" />
+                <span>
+                  {extractAIErrorMessage(
+                    categorizeMutation.error,
+                    "ไม่สามารถแนะนำหมวดหมู่บิลด้วย AI ได้ กรุณาลองใหม่อีกครั้ง",
+                  )}
+                </span>
+              </div>
+            )}
+
+            {aiCategorySuggestion && !categorizeMutation.isPending && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5 space-y-2 text-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-primary">
+                    <CheckCircle2 className="size-4 shrink-0" />
+                    <span>คำแนะนำการจัดหมวดหมู่ (AI)</span>
+                    <Badge variant="secondary" className="text-[10px] font-normal">
+                      มั่นใจ {Math.round(aiCategorySuggestion.confidence * 100)}%
+                    </Badge>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => applyCategorySuggestion(aiCategorySuggestion)}
+                    className="h-7 rounded-lg text-xs cursor-pointer"
+                  >
+                    ใช้ค่าที่แนะนำทั้งหมด
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">ประเภท: </span>
+                    <span className="font-medium text-foreground">
+                      {aiCategorySuggestion.utilityType || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">รหัสแยกประเภท: </span>
+                    <span className="font-mono font-medium text-foreground">
+                      {aiCategorySuggestion.accountCode || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">รหัสงบประมาณ: </span>
+                    <span className="font-mono font-medium text-foreground">
+                      {aiCategorySuggestion.budgetCode || "-"}
+                      {aiCategorySuggestion.budgetFiscalYear
+                        ? ` (พ.ศ. ${aiCategorySuggestion.budgetFiscalYear})`
+                        : ""}
+                    </span>
+                  </div>
+                </div>
+                {aiCategorySuggestion.reasoning && (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {aiCategorySuggestion.reasoning}
+                  </p>
+                )}
+                {aiCategorySuggestion.warnings?.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {[...new Set(aiCategorySuggestion.warnings)].map((w) => (
+                      <p
+                        key={w}
+                        className="text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-1.5"
+                      >
+                        <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                        <span>{w}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.utilityType}>
@@ -667,74 +1101,55 @@ export function CreateBillForm({
                         setSelectedServiceNumbers(numbers);
                       }}
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-xs font-medium border-orange-500/30 bg-orange-50/80 text-orange-600 hover:bg-orange-100 hover:border-orange-500/50 dark:bg-orange-950/30 dark:text-orange-400 dark:hover:bg-orange-950/50 shadow-2xs transition-all gap-1.5 rounded-lg"
-                      disabled={!selectedDeptData}
-                      onClick={() => setServicesSheetOpen(true)}
-                    >
-                      <Settings className="size-3.5" />
-                      <span>จัดการหมายเลข</span>
-                    </Button>
                   </div>
                 </div>
 
                 {/* Selection Dropdown */}
                 <div className="space-y-2">
-                  <Select
-                    value=""
-                    onValueChange={addServiceNumber}
+                  <ServiceNumberCombobox
+                    id="serviceNumber"
+                    services={utilityServices}
+                    selectedNumbers={selectedServiceNumbers}
+                    onSelect={addServiceNumber}
                     disabled={!selectedUtility || utilityServices.length === 0}
-                  >
-                    <SelectTrigger
-                      className={cn(
-                        "h-10 bg-background shadow-2xs text-xs sm:text-sm rounded-xl",
-                        !selectedUtility || utilityServices.length === 0
-                          ? "bg-muted cursor-not-allowed opacity-60"
-                          : fieldErrors?.serviceNumber
-                            ? "border-rose-500 ring-2 ring-rose-500/20"
-                            : ""
-                      )}
-                    >
-                      <SelectValue
-                        placeholder={
-                          !selectedUtility
-                            ? "⚠️ กรุณาเลือกประเภทสาธารณูปโภคด้านบนก่อน"
-                            : utilityServices.length === 0
-                              ? "ไม่พบหมายเลขผู้ใช้ในระบบ (กดปุ่มจัดการหมายเลขเพื่อเพิ่ม)"
-                              : "+ ค้นหาและคลิกเพื่อเลือกหมายเลขผู้ใช้ / รหัสเครื่องวัด..."
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64">
-                      {utilityServices
-                        .filter((svc) => !selectedServiceNumbers.includes(svc.serviceNumber))
-                        .map((svc) => (
-                          <SelectItem
-                            key={svc.id}
-                            value={svc.serviceNumber}
-                            label={svc.serviceNumber}
-                            className="py-2"
-                          >
-                            <div className="flex items-center justify-between gap-3 w-full">
-                              <span className="font-mono font-semibold text-xs text-foreground">
-                                {svc.serviceNumber}
-                              </span>
-                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                                {svc.provider && <span>({svc.provider})</span>}
-                                {svc.locationType && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                    {svc.locationType}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                    hasError={!!fieldErrors?.serviceNumber || hasDuplicateService}
+                    recordedNumbers={duplicateBillsMap}
+                  />
+
+                  {hasDuplicateService && (
+                    <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-destructive flex items-start gap-2.5 animate-in fade-in-0 duration-150">
+                      <AlertTriangle className="size-4.5 shrink-0 mt-0.5 text-destructive" />
+                      <div className="space-y-1 text-xs flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-destructive">
+                            ไม่อนุญาตให้บันทึกซ้ำ: พบหมายเลขที่บันทึกบิลในรอบบิลประจำเดือน {formattedBillingMonthThai} แล้ว
+                          </span>
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                            พบข้อมูลซ้ำ
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          หมายเลขด้านล่างนี้ได้รับการบันทึกลงระบบแล้วในรอบบิลดังกล่าว จึงไม่สามารถบันทึกซ้ำได้:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {duplicateSelectedServices.map((dup) => (
+                            <span
+                              key={dup.serviceNumber}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-background/90 border border-destructive/40 font-mono text-destructive text-[11px] font-medium"
+                            >
+                              <span>{dup.serviceNumber}</span>
+                              {dup.billCode && (
+                                <span className="text-[10px] text-muted-foreground">({dup.billCode})</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground pt-0.5">
+                          กรุณากดปุ่ม ✕ ที่หมายเลขดังกล่าว หรือเปลี่ยนรอบบิลประจำเดือนก่อนทำการบันทึก
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <input
                     type="hidden"
@@ -772,21 +1187,39 @@ export function CreateBillForm({
                     <div className="flex flex-wrap gap-1.5">
                       {selectedServiceNumbers.map((sn) => {
                         const svc = utilityServices.find((s) => s.serviceNumber === sn);
+                        const isDuplicate = duplicateBillsMap.has(sn.trim().toLowerCase());
                         return (
                           <div
                             key={sn}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-primary/10 border border-primary/20 text-foreground shadow-2xs"
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs shadow-2xs transition-all",
+                              isDuplicate
+                                ? "bg-destructive/15 border border-destructive/40 text-destructive font-medium ring-1 ring-destructive/20"
+                                : "bg-primary/10 border border-primary/20 text-foreground",
+                            )}
                           >
                             <span className="font-mono font-medium">{sn}</span>
-                            {svc?.provider && (
+                            {isDuplicate ? (
+                              <Badge
+                                variant="destructive"
+                                className="text-[9px] px-1 py-0 h-4 font-normal"
+                              >
+                                บันทึกแล้วในรอบนี้
+                              </Badge>
+                            ) : svc?.provider ? (
                               <span className="text-[10px] text-muted-foreground">
                                 ({svc.provider})
                               </span>
-                            )}
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => removeServiceNumber(sn)}
-                              className="size-4 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ml-0.5"
+                              className={cn(
+                                "size-4 rounded-full flex items-center justify-center transition-colors ml-0.5",
+                                isDuplicate
+                                  ? "text-destructive hover:bg-destructive/20"
+                                  : "text-muted-foreground hover:text-destructive hover:bg-destructive/10",
+                              )}
                               title="ลบหมายเลขนี้"
                             >
                               <X className="size-3" />
@@ -813,14 +1246,26 @@ export function CreateBillForm({
                     <input type="hidden" name="provider" value={provider} />
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="size-3.5 text-muted-foreground" />
-                    <span>ที่ตั้ง:</span>
-                    <span className="font-medium text-foreground">
-                      {selectedLocation || "ตรวจจับอัตโนมัติจากหมายเลขที่เลือก"}
-                    </span>
-                    <input type="hidden" name="locationType" value={selectedLocation} />
-                  </div>
+                  {(selectedUtility === "ค่าไฟฟ้า" ||
+                    selectedUtility === "ค่าประปา&น้ำบาดาล") && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-3.5 text-muted-foreground" />
+                      <span>ที่ตั้ง:</span>
+                      <span className="font-medium text-foreground">
+                        {selectedLocation || "ตรวจจับอัตโนมัติจากหมายเลขที่เลือก"}
+                      </span>
+                    </div>
+                  )}
+                  <input
+                    type="hidden"
+                    name="locationType"
+                    value={
+                      selectedUtility === "ค่าไฟฟ้า" ||
+                      selectedUtility === "ค่าประปา&น้ำบาดาล"
+                        ? selectedLocation
+                        : ""
+                    }
+                  />
                 </div>
               </div>
 
@@ -876,7 +1321,14 @@ export function CreateBillForm({
                 />
                 <RadioGroup
                   value={invoiceStatus}
-                  onValueChange={setInvoiceStatus}
+                  onValueChange={(val) => {
+                    setInvoiceStatus(val);
+                    if (val === "NOT_RECEIVED") {
+                      setPaymentStatus("PENDING");
+                      setReceiptStatus("NOT_RECEIVED");
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
                   name="invoiceStatus"
                   className="flex flex-col space-y-2 mt-1"
                 >
@@ -933,11 +1385,11 @@ export function CreateBillForm({
                     <ErrorSpeechBubble message={fieldErrors?.receivedDate} />
                   </div>
 
-                  {disbursingType === "หน่วยงานฝากเบิก" && (
+                  {disbursingType === "หน่วยฝากเบิก" && (
                     <>
                       <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.sentToDisbursingDate}>
                         <Label htmlFor="sentToDisbursingDate">
-                          หน่วยฝากเบิกส่งเอกสาร
+                          วันที่หน่วยฝากเบิกส่งเอกสาร
                         </Label>
                         <DatePickerBE
                           id="sentToDisbursingDate"
@@ -952,7 +1404,7 @@ export function CreateBillForm({
 
                       <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.disbursingReceivedDate}>
                         <Label htmlFor="disbursingReceivedDate">
-                          วันที่หน่วยเบิกจ่ายลงรับใบแจ้งหนี้
+                          วันที่หน่วยเบิกจ่ายลงรับใบสำคัญ
                         </Label>
                         <DatePickerBE
                           id="disbursingReceivedDate"
@@ -1080,7 +1532,7 @@ export function CreateBillForm({
                     selectedUtility === "ค่าประปา&น้ำบาดาล") && (
                     <div className="grid gap-2 relative" data-has-error={!!fieldErrors?.unitsUsed}>
                       <Label htmlFor="unitsUsed">
-                        ปริมาณการใช้ (kWh / m³){" "}
+                        ปริมาณการใช้ (หน่วย){" "}
                         <span className="text-destructive">*</span>
                       </Label>
                       <Input
@@ -1156,7 +1608,13 @@ export function CreateBillForm({
                 />
                 <RadioGroup
                   value={paymentStatus}
-                  onValueChange={setPaymentStatus}
+                  onValueChange={(val) => {
+                    setPaymentStatus(val);
+                    if (val !== "PAID") {
+                      setReceiptStatus("NOT_RECEIVED");
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
                   name="paymentStatus"
                   className="flex flex-col space-y-2 mt-1"
                 >
@@ -1303,16 +1761,36 @@ export function CreateBillForm({
                       <Label htmlFor="docType">
                         ประเภทเอกสาร <span className="text-destructive">*</span>
                       </Label>
-                      <Input
-                        type="text"
-                        id="docType"
-                        name="docType"
+                      <Select
                         value={docType}
-                        onChange={(e) => setDocType(e.target.value)}
-                        placeholder="เช่น KC"
+                        onValueChange={(val) => setDocType(val || "")}
+                        name="docType"
                         required={true}
-                        className={fieldErrors?.docType ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
-                      />
+                      >
+                        <SelectTrigger
+                          id="docType"
+                          className={fieldErrors?.docType ? "border-rose-500 ring-2 ring-rose-500/20" : ""}
+                        >
+                          <SelectValue placeholder="เลือกประเภทเอกสาร..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="KC" label="KC">
+                            KC
+                          </SelectItem>
+                          <SelectItem value="KE" label="KE">
+                            KE
+                          </SelectItem>
+                          <SelectItem value="KI" label="KI">
+                            KI
+                          </SelectItem>
+                          <SelectItem value="KL" label="KL">
+                            KL
+                          </SelectItem>
+                          <SelectItem value="KN" label="KN">
+                            KN
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <ErrorSpeechBubble message={fieldErrors?.docType} />
                     </div>
 
@@ -1393,17 +1871,6 @@ export function CreateBillForm({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <FileUploadDropzone
-                        id="attachmentReceipt"
-                        name="attachmentReceipt"
-                        label="ใบเสร็จรับเงิน"
-                        required
-                        accept="image/*,.pdf"
-                        value={selectedReceiptFile}
-                        onChange={setSelectedReceiptFile}
-                        errorMessage={fieldErrors?.attachmentReceipt}
-                      />
-
-                      <FileUploadDropzone
                         id="attachmentDirectPayment"
                         name="attachmentDirectPayment"
                         label="รายงานจ่ายตรง / รายงาน KTB"
@@ -1419,6 +1886,86 @@ export function CreateBillForm({
               )}
             </div>
           </div>
+
+          {/* Group 5: ใบเสร็จชำระเงิน */}
+          <div className="space-y-4 rounded-2xl border bg-card/50 p-4 shadow-xs">
+            <div className="flex items-center gap-2 border-b pb-3">
+              <Receipt className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-lg tracking-tight">
+                ใบเสร็จชำระเงิน
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5">
+              <div className="grid gap-2">
+                <Label>
+                  สถานะใบเสร็จชำระเงิน <span className="text-destructive">*</span>
+                </Label>
+                <input
+                  type="hidden"
+                  name="receiptStatus"
+                  value={receiptStatus}
+                />
+                <RadioGroup
+                  value={receiptStatus}
+                  onValueChange={(val) => {
+                    setReceiptStatus(val);
+                    if (val !== "RECEIVED") {
+                      setSelectedReceiptFile(null);
+                    }
+                  }}
+                  name="receiptStatus"
+                  className="flex flex-col space-y-2 mt-1"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="NOT_RECEIVED" id="receipt_not_received" />
+                    <Label
+                      htmlFor="receipt_not_received"
+                      className="font-normal cursor-pointer"
+                    >
+                      ยังไม่ได้ใบเสร็จชำระเงิน
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem
+                      value="RECEIVED"
+                      id="receipt_received"
+                      disabled={paymentStatus !== "PAID"}
+                    />
+                    <Label
+                      htmlFor="receipt_received"
+                      className={`font-normal cursor-pointer ${paymentStatus !== "PAID" ? "text-muted-foreground opacity-50" : ""}`}
+                    >
+                      ได้ใบเสร็จชำระเงินแล้ว
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {receiptStatus === "RECEIVED" && (
+                <div className="pt-4 border-t border-dashed mt-2">
+                  <div className="flex items-center gap-2 mb-4">
+                    <UploadCloud className="h-5 w-5 text-primary" />
+                    <h4 className="font-semibold text-md tracking-tight">
+                      ไฟล์แนบหลักฐาน
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <FileUploadDropzone
+                      id="attachmentReceipt"
+                      name="attachmentReceipt"
+                      label="ใบเสร็จรับเงิน"
+                      required
+                      accept="image/*,.pdf"
+                      value={selectedReceiptFile}
+                      onChange={setSelectedReceiptFile}
+                      errorMessage={fieldErrors?.attachmentReceipt}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2 bg-muted/50 p-4 rounded-b-xl border-t mt-4">
           <Button
@@ -1428,20 +1975,27 @@ export function CreateBillForm({
           >
             ยกเลิก
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
+          <Button
+            type="submit"
+            disabled={isPending || hasDuplicateService}
+            className={cn(
+              hasDuplicateService &&
+                "bg-destructive hover:bg-destructive/90 opacity-90 cursor-not-allowed",
+            )}
+          >
+            {isPending ? (
+              "กำลังบันทึก..."
+            ) : hasDuplicateService ? (
+              <>
+                <AlertTriangle className="size-4 mr-1.5" />
+                <span>ไม่อนุญาตให้บันทึก (มีหมายเลขซ้ำ)</span>
+              </>
+            ) : (
+              "บันทึกข้อมูล"
+            )}
           </Button>
         </CardFooter>
       </form>
-
-      {selectedDeptData && (
-        <DepartmentServicesSheet
-          department={selectedDeptData as any}
-          services={deptServices}
-          open={servicesSheetOpen}
-          onOpenChange={setServicesSheetOpen}
-        />
-      )}
     </Card>
   );
 }

@@ -49,6 +49,7 @@ export interface BillDTO {
   isWrongBudget?: boolean;
   isWrongMonth?: boolean;
   locationType?: string;
+  manualAnomalyDetail?: string;
   manualAnomalyReason?: string;
   paidAmount?: number;
   paymentDate?: string;

@@ -93,7 +93,7 @@ const createBillSchema = z
     depositUnitId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.disbursingType === "หน่วยงานฝากเบิก" && !data.depositUnitId) {
+    if ((data.disbursingType === "หน่วยฝากเบิก" || data.disbursingType === "หน่วยงานฝากเบิก") && !data.depositUnitId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "กรุณาระบุหน่วยงานที่รับฝากเบิก",
@@ -273,10 +273,12 @@ export async function createBill(prevState: unknown, formData: FormData) {
       fileErrors.attachmentInvoice = ["กรุณาแนบไฟล์เอกสารใบแจ้งหนี้"];
     }
 
+    const receiptStatus =
+      parsed.data.paymentStatus !== "PAID"
+        ? "NOT_RECEIVED"
+        : ((formData.get("receiptStatus") as string) || "NOT_RECEIVED");
+
     if (parsed.data.paymentStatus === "PAID") {
-      if (!receiptFile || receiptFile.size === 0) {
-        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
-      }
       if (
         (!directPaymentFile || directPaymentFile.size === 0) &&
         (!ktbReportFile || ktbReportFile.size === 0)
@@ -287,11 +289,71 @@ export async function createBill(prevState: unknown, formData: FormData) {
       }
     }
 
+    if (receiptStatus === "RECEIVED") {
+      if (!receiptFile || receiptFile.size === 0) {
+        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
+      }
+    }
+
     if (Object.keys(fileErrors).length > 0) {
       return {
         success: false,
         error: fileErrors,
       };
+    }
+
+    const [yearStr, monthStr] = (parsed.data.billingMonth || "").split("-");
+    const billingYear = parseInt(yearStr, 10) || new Date().getFullYear();
+    const billingMonth = parseInt(monthStr, 10) || new Date().getMonth() + 1;
+
+    // Check duplicate service numbers before uploading files
+    const inputNumbers = parsed.data.serviceNumber
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (inputNumbers.length > 0 && parsed.data.departmentId) {
+      try {
+        const checkRes = await fetch(
+          `${BACKEND_URL}/api/bills?departmentId=${encodeURIComponent(
+            parsed.data.departmentId,
+          )}&billingYear=${billingYear}&billingMonth=${billingMonth}`,
+          {
+            headers: await getAuthHeaders(),
+            cache: "no-store",
+          },
+        );
+        if (checkRes.ok) {
+          const existingBills = (await checkRes.json()) as any[];
+          const billsArray = Array.isArray(existingBills)
+            ? existingBills
+            : Array.isArray((existingBills as any)?.body)
+              ? (existingBills as any).body
+              : [];
+
+          for (const eb of billsArray) {
+            if (eb.serviceNumber) {
+              const ebParts = eb.serviceNumber
+                .split(",")
+                .map((s: string) => s.trim().toLowerCase());
+              for (const num of inputNumbers) {
+                if (ebParts.includes(num.toLowerCase())) {
+                  return {
+                    success: false,
+                    error: {
+                      serviceNumber: [
+                        `หมายเลข ${num} ได้รับการบันทึกบิลประจำเดือน ${billingMonth}/${billingYear} ไปแล้ว (รหัสบิล: ${eb.billCode || eb.id}) ไม่อนุญาตให้บันทึกซ้ำ`,
+                      ],
+                    },
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed pre-checking duplicate bills:", err);
+      }
     }
 
     const [invoicePath, receiptPath, directPaymentPath, ktbReportPath] =
@@ -301,10 +363,6 @@ export async function createBill(prevState: unknown, formData: FormData) {
         saveFile(directPaymentFile),
         saveFile(ktbReportFile),
       ]);
-
-    const [yearStr, monthStr] = (parsed.data.billingMonth || "").split("-");
-    const billingYear = parseInt(yearStr, 10) || new Date().getFullYear();
-    const billingMonth = parseInt(monthStr, 10) || new Date().getMonth() + 1;
 
     const payload = {
       departmentId: parsed.data.departmentId,
@@ -337,11 +395,11 @@ export async function createBill(prevState: unknown, formData: FormData) {
       paymentStatus: parsed.data.paymentStatus,
       invoiceStatus: parsed.data.invoiceStatus || "RECEIVED",
       attachmentInvoice: invoicePath || undefined,
-      attachmentReceipt: receiptPath || undefined,
+      attachmentReceipt: receiptPath ? receiptPath : (receiptStatus === "NOT_RECEIVED" ? "" : undefined),
       attachmentDirectPayment: directPaymentPath || undefined,
       attachmentKtbReport: ktbReportPath || undefined,
       isPendingBillOnly: false,
-      depositUnitId: parsed.data.disbursingType === "หน่วยงานฝากเบิก" ? parsed.data.depositUnitId : undefined,
+      depositUnitId: (parsed.data.disbursingType === "หน่วยฝากเบิก" || parsed.data.disbursingType === "หน่วยงานฝากเบิก") ? parsed.data.depositUnitId : undefined,
     };
 
     const reqHeaders = await getAuthHeaders();
@@ -362,6 +420,7 @@ export async function createBill(prevState: unknown, formData: FormData) {
 
     revalidatePath("/bills");
     revalidatePath("/all-bills");
+    revalidatePath("/bill-tracking");
     return { success: true };
   } catch (error: unknown) {
     console.error("Error creating bill:", error);
@@ -448,13 +507,13 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       fileErrors.attachmentInvoice = ["กรุณาแนบไฟล์เอกสารใบแจ้งหนี้"];
     }
 
+    const receiptStatus =
+      parsed.data.paymentStatus !== "PAID"
+        ? "NOT_RECEIVED"
+        : ((formData.get("receiptStatus") as string) ||
+           (existingBill?.attachmentReceipt ? "RECEIVED" : "NOT_RECEIVED"));
+
     if (parsed.data.paymentStatus === "PAID") {
-      if (
-        !existingBill?.attachmentReceipt &&
-        (!receiptFile || receiptFile.size === 0)
-      ) {
-        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
-      }
       if (
         !existingBill?.attachmentDirectPayment &&
         !existingBill?.attachmentKtbReport &&
@@ -464,6 +523,15 @@ export async function updateBill(prevState: unknown, formData: FormData) {
         fileErrors.attachmentDirectPayment = [
           "กรุณาแนบไฟล์รายงานจ่ายตรง / รายงาน KTB",
         ];
+      }
+    }
+
+    if (receiptStatus === "RECEIVED") {
+      if (
+        !existingBill?.attachmentReceipt &&
+        (!receiptFile || receiptFile.size === 0)
+      ) {
+        fileErrors.attachmentReceipt = ["กรุณาแนบไฟล์ใบเสร็จรับเงิน"];
       }
     }
 
@@ -517,11 +585,11 @@ export async function updateBill(prevState: unknown, formData: FormData) {
       paymentStatus: parsed.data.paymentStatus,
       invoiceStatus: parsed.data.invoiceStatus || "RECEIVED",
       attachmentInvoice: invoicePath || undefined,
-      attachmentReceipt: receiptPath || undefined,
+      attachmentReceipt: receiptPath ? receiptPath : (receiptStatus === "NOT_RECEIVED" ? "" : undefined),
       attachmentDirectPayment: directPaymentPath || undefined,
       attachmentKtbReport: ktbReportPath || undefined,
-      isPendingBillOnly: parsed.data.disbursingType === "หน่วยงานฝากเบิก",
-      depositUnitId: parsed.data.disbursingType === "หน่วยงานฝากเบิก" ? parsed.data.depositUnitId : undefined,
+      isPendingBillOnly: parsed.data.disbursingType === "หน่วยฝากเบิก" || parsed.data.disbursingType === "หน่วยงานฝากเบิก",
+      depositUnitId: (parsed.data.disbursingType === "หน่วยฝากเบิก" || parsed.data.disbursingType === "หน่วยงานฝากเบิก") ? parsed.data.depositUnitId : undefined,
     };
 
     const res = await fetch(`${BACKEND_URL}/api/bills/${parsed.data.billId}`, {
@@ -540,6 +608,9 @@ export async function updateBill(prevState: unknown, formData: FormData) {
 
     revalidatePath("/bills");
     revalidatePath("/all-bills");
+    revalidatePath("/bill-tracking");
+    revalidatePath(`/bills/${parsed.data.billId}`);
+    revalidatePath(`/bills/${parsed.data.billId}/edit`);
     return { success: true };
   } catch (error: unknown) {
     console.error("Error updating bill:", error);

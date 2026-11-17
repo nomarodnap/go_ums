@@ -8,7 +8,7 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:8080";
 
-export async function flagManualAnomaly(billId: string, reason: string) {
+export async function flagManualAnomaly(billId: string, reason: string, detail?: string) {
   try {
     const cookieStore = await cookies();
     const authToken =
@@ -24,10 +24,15 @@ export async function flagManualAnomaly(billId: string, reason: string) {
       reqHeaders["Cookie"] = `auth_token=${authToken}; better-auth.session_token=${authToken}`;
     }
 
+    const payload: { reason: string; detail?: string } = { reason };
+    if (detail && detail.trim() !== "") {
+      payload.detail = detail.trim();
+    }
+
     const res = await fetch(`${BACKEND_URL}/api/audits/bills/${billId}/flag`, {
       method: "POST",
       headers: reqHeaders,
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {

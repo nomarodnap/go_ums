@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/dof/ums-backend/internal/ai"
 	"github.com/dof/ums-backend/internal/auth"
 	"github.com/dof/ums-backend/internal/service"
 	"github.com/google/uuid"
@@ -73,6 +76,7 @@ type BillDTO struct {
 	IsAnomalyExpense       *bool      `json:"isAnomalyExpense,omitempty"`
 	IsManualAnomaly        *bool      `json:"isManualAnomaly,omitempty"`
 	ManualAnomalyReason    *string    `json:"manualAnomalyReason,omitempty"`
+	ManualAnomalyDetail    *string    `json:"manualAnomalyDetail,omitempty"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	UpdatedAt              time.Time  `json:"updatedAt"`
 }
@@ -190,24 +194,46 @@ type ListBillLogsOutput struct {
 }
 
 type BillTrackingItemDTO struct {
-	ID             string  `json:"id"`
-	DepartmentID   string  `json:"departmentId"`
-	DepartmentName string  `json:"departmentName"`
-	UtilityType    string  `json:"utilityType"`
-	Provider       string  `json:"provider"`
-	ServiceNumber  string  `json:"serviceNumber"`
-	Amount         float64 `json:"amount"`
-	Status         string  `json:"status"` // "UNRECORDED" | "NOT_RECEIVED" | "PENDING_PAYMENT" | "PAID" | "UNKNOWN"
-	IsExpected     bool    `json:"isExpected"`
-	BillID         *string `json:"billId,omitempty"`
+	ID                  string     `json:"id"`
+	DepartmentID        string     `json:"departmentId"`
+	DepartmentName      string     `json:"departmentName"`
+	DepositUnitName     *string    `json:"depositUnitName,omitempty"`
+	UtilityType         string     `json:"utilityType"`
+	Provider            string     `json:"provider"`
+	ServiceNumber       string     `json:"serviceNumber"`
+	BillCode            *string    `json:"billCode,omitempty"`
+	InvoiceNumber       *string    `json:"invoiceNumber,omitempty"`
+	PaymentDocNumber    *string    `json:"paymentDocNumber,omitempty"`
+	PaidAmount          *float64   `json:"paidAmount,omitempty"`
+	Amount              float64    `json:"amount"`
+	Status              string     `json:"status"` // "UNRECORDED" | "NOT_RECEIVED" | "PENDING_PAYMENT" | "PAID" | "UNKNOWN"
+	IsExpected          bool       `json:"isExpected"`
+	BillID              *string    `json:"billId,omitempty"`
+	AttachmentReceipt   *string    `json:"attachmentReceipt,omitempty"`
+	IsReviewed          *bool      `json:"isReviewed,omitempty"`
+	ReviewedBy          *string    `json:"reviewedBy,omitempty"`
+	ReviewedAt          *time.Time `json:"reviewedAt,omitempty"`
+	AuditStatus         *string    `json:"auditStatus,omitempty"` // "NORMAL" | "PENDING_CORRECTION" | "CORRECTED"
+	IsManualAnomaly     *bool      `json:"isManualAnomaly,omitempty"`
+	ManualAnomalyReason *string    `json:"manualAnomalyReason,omitempty"`
+	ManualAnomalyDetail *string    `json:"manualAnomalyDetail,omitempty"`
+	AuditIssues         []string   `json:"auditIssues,omitempty"`
 }
 
 type BillTrackingSummaryDTO struct {
-	Total       int `json:"total"`
-	Unrecorded  int `json:"unrecorded"`
-	NotReceived int `json:"notReceived"`
-	Pending     int `json:"pending"`
-	Paid        int `json:"paid"`
+	Total         int     `json:"total"`
+	Unrecorded    int     `json:"unrecorded"`
+	NotReceived   int     `json:"notReceived"`
+	Pending       int     `json:"pending"`
+	Paid          int     `json:"paid"`
+	PendingAmount float64 `json:"pendingAmount"`
+	PaidAmount    float64 `json:"paidAmount"`
+	Reviewed      int     `json:"reviewed"`
+	Unreviewed    int     `json:"unreviewed"`
+	Normal        int     `json:"normal"`
+	AnomalyIssues int     `json:"anomalyIssues"`
+	ManualAnomaly int     `json:"manualAnomaly"`
+	Corrected     int     `json:"corrected"`
 }
 
 type BillTrackingOutput struct {
@@ -225,7 +251,12 @@ type GetBillTrackingInput struct {
 	DepartmentID string `query:"departmentId" doc:"Optional department ID filter"`
 }
 
-func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
+func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool, searchServices ...*ai.SearchService) {
+	var searchService *ai.SearchService
+	if len(searchServices) > 0 && searchServices[0] != nil {
+		searchService = searchServices[0]
+	}
+
 	// List Bills
 	huma.Register(api, huma.Operation{
 		OperationID: "listBills",
@@ -245,15 +276,16 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			       b.receipt_date, b.receipt_payment_date, b.attachment_invoice, b.attachment_receipt,
 			       b.attachment_payment_doc, b.attachment_direct_payment, b.attachment_ktb_report,
 			       b.is_pending_bill_only, b.deposit_unit_id, dep_unit.full_name, b.is_reviewed,
-			       b.reviewed_by, b.reviewed_at, a.status, a.is_late_receive, a.is_late_payment,
+			       COALESCE(u_rev.name, b.reviewed_by) AS reviewed_by, b.reviewed_at, a.status, a.is_late_receive, a.is_late_payment,
 			       a.is_overdue_more_than_2_months, a.is_disbursement_over_2_months, a.is_wrong_month,
 			       a.is_phone_over_limit, a.is_phone_usage_over_limit, a.is_wrong_budget,
-			       a.is_duplicate, a.is_anomaly_expense, a.is_manual_anomaly, a.manual_anomaly_reason,
+			       a.is_duplicate, a.is_anomaly_expense, a.is_manual_anomaly, a.manual_anomaly_reason, a.manual_anomaly_detail,
 			       b.created_at, b.updated_at
 			FROM utility_bills b
 			LEFT JOIN departments d ON b.department_id = d.id
 			LEFT JOIN departments dep_unit ON b.deposit_unit_id = dep_unit.id
 			LEFT JOIN audits a ON b.id = a.utility_bill_id
+			LEFT JOIN "user" u_rev ON b.reviewed_by = u_rev.id
 			WHERE 1=1
 		`
 		var args []interface{}
@@ -309,7 +341,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 				&b.ReviewedBy, &b.ReviewedAt, &b.AuditStatus, &b.IsLateReceive, &b.IsLatePayment,
 				&b.IsOverdueMoreThan2Months, &b.IsDisbursementOver2Months, &b.IsWrongMonth,
 				&b.IsPhoneOverLimit, &b.IsPhoneUsageOverLimit, &b.IsWrongBudget,
-				&b.IsDuplicate, &b.IsAnomalyExpense, &b.IsManualAnomaly, &b.ManualAnomalyReason,
+				&b.IsDuplicate, &b.IsAnomalyExpense, &b.IsManualAnomaly, &b.ManualAnomalyReason, &b.ManualAnomalyDetail,
 				&b.CreatedAt, &b.UpdatedAt,
 			); err == nil {
 				results = append(results, b)
@@ -340,6 +372,47 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			}
 			if !allowed[user.Role] {
 				return nil, huma.Error403Forbidden("forbidden: insufficient permissions")
+			}
+		}
+
+		// Check for duplicate bills with any overlapping service number in the same month & year
+		if input.Body.ServiceNumber != nil && *input.Body.ServiceNumber != "" {
+			inputParts := strings.Split(*input.Body.ServiceNumber, ",")
+			var cleanNumbers []string
+			for _, part := range inputParts {
+				t := strings.TrimSpace(part)
+				if t != "" {
+					cleanNumbers = append(cleanNumbers, t)
+				}
+			}
+
+			if len(cleanNumbers) > 0 {
+				dupRows, err := pool.Query(ctx, `
+					SELECT b.id, b.bill_code, b.service_number
+					FROM utility_bills b
+					WHERE b.billing_month = $1 AND b.billing_year = $2
+					  AND ($3 = '' OR b.department_id = $3 OR b.deposit_unit_id = $3)
+				`, input.Body.BillingMonth, input.Body.BillingYear, input.Body.DepartmentID)
+				if err == nil {
+					defer dupRows.Close()
+					for dupRows.Next() {
+						var dID, dCode, dSN string
+						if err := dupRows.Scan(&dID, &dCode, &dSN); err == nil {
+							existingParts := strings.Split(dSN, ",")
+							for _, ep := range existingParts {
+								cleanedExisting := strings.TrimSpace(ep)
+								for _, inp := range cleanNumbers {
+									if strings.EqualFold(cleanedExisting, inp) {
+										return nil, huma.Error400BadRequest(fmt.Sprintf(
+											"หมายเลข %s ได้รับการบันทึกบิลประจำเดือน %d/%d ไปแล้ว (รหัสบิล: %s) ไม่อนุญาตให้บันทึกซ้ำ",
+											inp, input.Body.BillingMonth, input.Body.BillingYear, dCode,
+										))
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -403,6 +476,14 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			VALUES ($1, $2, $3, 'CREATED', 'บันทึกค่าใช้จ่ายใหม่', NOW())
 		`, logID, billID, userID)
 
+		if searchService != nil {
+			go func(id string) {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				_ = searchService.UpsertBillEmbedding(bgCtx, id)
+			}(billID)
+		}
+
 		return &SingleBillOutput{
 			Body: BillDTO{
 				ID:            billID,
@@ -439,6 +520,13 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to delete bill")
 		}
+		if searchService != nil {
+			go func(id string) {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = searchService.DeleteBillEmbedding(bgCtx, id)
+			}(input.ID)
+		}
 		return &struct{ Body bool `json:"body"` }{Body: true}, nil
 	})
 
@@ -466,15 +554,16 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			       b.receipt_date, b.receipt_payment_date, b.attachment_invoice, b.attachment_receipt,
 			       b.attachment_payment_doc, b.attachment_direct_payment, b.attachment_ktb_report,
 			       b.is_pending_bill_only, b.deposit_unit_id, dep_unit.full_name, b.is_reviewed,
-			       b.reviewed_by, b.reviewed_at, a.status, a.is_late_receive, a.is_late_payment,
+			       COALESCE(u_rev.name, b.reviewed_by) AS reviewed_by, b.reviewed_at, a.status, a.is_late_receive, a.is_late_payment,
 			       a.is_overdue_more_than_2_months, a.is_disbursement_over_2_months, a.is_wrong_month,
 			       a.is_phone_over_limit, a.is_phone_usage_over_limit, a.is_wrong_budget,
-			       a.is_duplicate, a.is_anomaly_expense, a.is_manual_anomaly, a.manual_anomaly_reason,
+			       a.is_duplicate, a.is_anomaly_expense, a.is_manual_anomaly, a.manual_anomaly_reason, a.manual_anomaly_detail,
 			       b.created_at, b.updated_at
 			FROM utility_bills b
 			LEFT JOIN departments d ON b.department_id = d.id
 			LEFT JOIN departments dep_unit ON b.deposit_unit_id = dep_unit.id
 			LEFT JOIN audits a ON b.id = a.utility_bill_id
+			LEFT JOIN "user" u_rev ON b.reviewed_by = u_rev.id
 			WHERE b.id = $1
 		`
 		var b BillDTO
@@ -492,7 +581,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			&b.ReviewedBy, &b.ReviewedAt, &b.AuditStatus, &b.IsLateReceive, &b.IsLatePayment,
 			&b.IsOverdueMoreThan2Months, &b.IsDisbursementOver2Months, &b.IsWrongMonth,
 			&b.IsPhoneOverLimit, &b.IsPhoneUsageOverLimit, &b.IsWrongBudget,
-			&b.IsDuplicate, &b.IsAnomalyExpense, &b.IsManualAnomaly, &b.ManualAnomalyReason,
+			&b.IsDuplicate, &b.IsAnomalyExpense, &b.IsManualAnomaly, &b.ManualAnomalyReason, &b.ManualAnomalyDetail,
 			&b.CreatedAt, &b.UpdatedAt,
 		)
 		if err != nil {
@@ -535,11 +624,11 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 				payment_date = $17, payment_doc_number = $18, doc_type = $19, account_code = $20, budget_code = $21,
 				fund_source = $22, paid_amount = $23, payment_status = $24, invoice_status = $25,
 				receipt_number = $26, receipt_date = $27, receipt_payment_date = $28,
-				attachment_invoice = COALESCE($29, attachment_invoice),
-				attachment_receipt = COALESCE($30, attachment_receipt),
-				attachment_payment_doc = COALESCE($31, attachment_payment_doc),
-				attachment_direct_payment = COALESCE($32, attachment_direct_payment),
-				attachment_ktb_report = COALESCE($33, attachment_ktb_report),
+				attachment_invoice = CASE WHEN $29 IS NOT NULL THEN NULLIF($29, '') ELSE attachment_invoice END,
+				attachment_receipt = CASE WHEN $30 IS NOT NULL THEN NULLIF($30, '') ELSE attachment_receipt END,
+				attachment_payment_doc = CASE WHEN $31 IS NOT NULL THEN NULLIF($31, '') ELSE attachment_payment_doc END,
+				attachment_direct_payment = CASE WHEN $32 IS NOT NULL THEN NULLIF($32, '') ELSE attachment_direct_payment END,
+				attachment_ktb_report = CASE WHEN $33 IS NOT NULL THEN NULLIF($33, '') ELSE attachment_ktb_report END,
 				is_pending_bill_only = $34, deposit_unit_id = $35, updated_at = NOW()
 			WHERE id = $36
 		`, input.Body.DepartmentID, input.Body.UtilityType, input.Body.BillingMonth, input.Body.BillingYear,
@@ -557,21 +646,115 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			return nil, huma.Error500InternalServerError("failed to update utility bill: " + err.Error())
 		}
 
+		// Check if this bill was flagged with a manual anomaly
+		var auditInfo struct {
+			id              string
+			isManualAnomaly bool
+			status          string
+		}
+		_ = pool.QueryRow(ctx, `
+			SELECT id, is_manual_anomaly, status 
+			FROM audits 
+			WHERE utility_bill_id = $1
+		`, input.ID).Scan(&auditInfo.id, &auditInfo.isManualAnomaly, &auditInfo.status)
+
 		// Re-evaluate Audits
 		_ = service.RunAuditChecks(ctx, pool, input.ID, userID, true)
+
+		// If the bill was flagged as abnormal, set status to 'PENDING_RECHECK' (รอตรวจสอบใหม่)
+		logDetail := "แก้ไขข้อมูลบิลค่าใช้จ่าย"
+		if auditInfo.isManualAnomaly {
+			_, _ = pool.Exec(ctx, `
+				UPDATE audits 
+				SET status = 'PENDING_RECHECK', updated_at = NOW()
+				WHERE utility_bill_id = $1
+			`, input.ID)
+
+			logDetail = "แก้ไขข้อมูลบิลหลังได้รับข้อสังเกตความผิดปกติ (รอตรวจสอบใหม่)"
+
+			// Mark unread manual anomaly notification as acknowledged/read
+			anomalyLink := fmt.Sprintf("/bills/%s/edit", input.ID)
+			_, _ = pool.Exec(ctx, `
+				UPDATE notifications 
+				SET is_read = true, 
+				    acknowledged_reason = 'หน่วยงานแก้ไขข้อมูลบิลแล้ว (รอตรวจสอบใหม่)', 
+				    acknowledged_at = NOW(), 
+				    updated_at = NOW()
+				WHERE link = $1 AND type = 'MANUAL_ANOMALY' AND is_read = false
+			`, anomalyLink)
+
+			// Notify auditor that the bill has been edited and is awaiting recheck
+			var notifInfo struct {
+				deptName    string
+				utilityType string
+				billMonth   int
+				billYear    int
+				billCode    *string
+				serviceNum  *string
+			}
+			_ = pool.QueryRow(ctx, `
+				SELECT COALESCE(d.full_name, 'ไม่ระบุหน่วยงาน'), b.utility_type, b.billing_month, b.billing_year, b.bill_code, b.service_number
+				FROM utility_bills b
+				LEFT JOIN departments d ON b.department_id = d.id
+				WHERE b.id = $1
+			`, input.ID).Scan(&notifInfo.deptName, &notifInfo.utilityType, &notifInfo.billMonth, &notifInfo.billYear, &notifInfo.billCode, &notifInfo.serviceNum)
+
+			thaiMonths := []string{"", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."}
+			mName := ""
+			if notifInfo.billMonth >= 1 && notifInfo.billMonth <= 12 {
+				mName = thaiMonths[notifInfo.billMonth]
+			}
+			bCode := ""
+			if notifInfo.billCode != nil && *notifInfo.billCode != "" {
+				bCode = fmt.Sprintf(" (รหัสบิล: %s)", *notifInfo.billCode)
+			}
+			sNum := "-"
+			if notifInfo.serviceNum != nil && *notifInfo.serviceNum != "" {
+				sNum = *notifInfo.serviceNum
+			}
+
+			notifTitle := "บิลที่พบข้อสังเกตได้รับการแก้ไขแล้ว (รอตรวจสอบใหม่)"
+			notifMsg := fmt.Sprintf("[%s] รายการ%s รอบบิล %s %d%s หมายเลข: %s ได้รับการแก้ไขข้อมูลแล้ว กรุณาตรวจสอบใหม่",
+				notifInfo.deptName, notifInfo.utilityType, mName, notifInfo.billYear+543, bCode, sNum)
+			billLink := fmt.Sprintf("/bills?id=%s", input.ID)
+
+			notifID := uuid.New().String()
+			_, _ = pool.Exec(ctx, `
+				INSERT INTO notifications (id, target_role, title, message, type, severity, is_read, link, created_at, updated_at)
+				VALUES ($1, 'auditor', $2, $3, 'MANUAL_ANOMALY_EDITED', 'INFO', false, $4, NOW(), NOW())
+			`, notifID, notifTitle, notifMsg, billLink)
+
+			_, _ = pool.Exec(ctx, `SELECT pg_notify('notifications', $1)`, fmt.Sprintf(`{"action":"anomaly_edited","billId":"%s"}`, input.ID))
+		}
 
 		// Activity Log
 		logID := uuid.New().String()
 		_, _ = pool.Exec(ctx, `
 			INSERT INTO bill_activity_logs (id, bill_id, user_id, action, details, created_at)
-			VALUES ($1, $2, $3, 'UPDATED', 'แก้ไขข้อมูลบิลค่าใช้จ่าย', NOW())
-		`, logID, input.ID, userID)
+			VALUES ($1, $2, $3, 'UPDATED', $4, NOW())
+		`, logID, input.ID, userID, logDetail)
 
 		// Return updated bill
 		var b BillDTO
-		_ = pool.QueryRow(ctx, "SELECT id, bill_code, department_id, utility_type, billing_month, billing_year, invoice_amount, payment_status, invoice_status, created_at, updated_at FROM utility_bills WHERE id = $1", input.ID).Scan(
-			&b.ID, &b.BillCode, &b.DepartmentID, &b.UtilityType, &b.BillingMonth, &b.BillingYear, &b.InvoiceAmount, &b.PaymentStatus, &b.InvoiceStatus, &b.CreatedAt, &b.UpdatedAt,
+		var auditStatus *string
+		_ = pool.QueryRow(ctx, `
+			SELECT b.id, b.bill_code, b.department_id, b.utility_type, b.billing_month, b.billing_year, 
+			       b.invoice_amount, b.payment_status, b.invoice_status, a.status, b.created_at, b.updated_at 
+			FROM utility_bills b 
+			LEFT JOIN audits a ON b.id = a.utility_bill_id 
+			WHERE b.id = $1
+		`, input.ID).Scan(
+			&b.ID, &b.BillCode, &b.DepartmentID, &b.UtilityType, &b.BillingMonth, &b.BillingYear, 
+			&b.InvoiceAmount, &b.PaymentStatus, &b.InvoiceStatus, &auditStatus, &b.CreatedAt, &b.UpdatedAt,
 		)
+		b.AuditStatus = auditStatus
+		if searchService != nil {
+			go func(id string) {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				_ = searchService.UpsertBillEmbedding(bgCtx, id)
+			}(input.ID)
+		}
 		return &SingleBillOutput{Body: b}, nil
 	})
 
@@ -619,15 +802,32 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 			IsReviewed bool `json:"isReviewed"`
 		}
 	}) (*struct{ Body bool `json:"body"` }, error) {
-		user, err := auth.RequireRoles(ctx, "admin", "auditor", "strategy_finance", "central_staff")
-		if err != nil {
-			return nil, huma.Error403Forbidden(err.Error())
+		user, ok := auth.UserFromContext(ctx)
+		if !ok || user == nil {
+			return nil, huma.Error401Unauthorized("unauthorized")
+		}
+		if !HasRolePermission(ctx, pool, user.Role, "/bills:review", "/all-bills:review") {
+			if user.Role != "admin" && user.Role != "auditor" && user.Role != "strategy_finance" && user.Role != "central_staff" {
+				return nil, huma.Error403Forbidden("forbidden: insufficient permissions")
+			}
 		}
 
+		var err error
 		var reviewedBy *string
 		var reviewedAt *time.Time
 		if input.Body.IsReviewed {
-			reviewedBy = &user.UserID
+			displayName := user.Name
+			if displayName == "" {
+				var name string
+				if err := pool.QueryRow(ctx, `SELECT name FROM "user" WHERE id = $1`, user.UserID).Scan(&name); err == nil && name != "" {
+					displayName = name
+				} else if user.Email != "" {
+					displayName = user.Email
+				} else {
+					displayName = user.UserID
+				}
+			}
+			reviewedBy = &displayName
 			now := time.Now()
 			reviewedAt = &now
 		}
@@ -642,7 +842,9 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 
 		logID := uuid.New().String()
 		actionDetails := "ตรวจสอบรายการบิลเรียบร้อยแล้ว"
-		if !input.Body.IsReviewed {
+		if input.Body.IsReviewed && reviewedBy != nil {
+			actionDetails = fmt.Sprintf("ตรวจสอบรายการบิลเรียบร้อยแล้ว โดย %s", *reviewedBy)
+		} else if !input.Body.IsReviewed {
 			actionDetails = "ยกเลิกการตรวจสอบบิล"
 		}
 		_, _ = pool.Exec(ctx, `
@@ -666,7 +868,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		rows, err := pool.Query(ctx, `
 			SELECT l.id, l.bill_id, l.user_id, u.name, u.email, l.action, l.details, l.created_at
 			FROM bill_activity_logs l
-			LEFT JOIN users u ON l.user_id = u.id
+			LEFT JOIN "user" u ON l.user_id = u.id
 			WHERE l.bill_id = $1
 			ORDER BY l.created_at DESC
 		`, input.ID)
@@ -750,12 +952,36 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 
 		// 2. Fetch bills for the month & year
 		billsQuery := `
-			SELECT b.id, b.department_id, b.deposit_unit_id, b.utility_type, COALESCE(b.provider, ''),
-			       COALESCE(b.service_number, ''), b.invoice_status, b.payment_status,
-			       COALESCE(b.invoice_amount, b.estimated_amount, 0),
-			       COALESCE(d.full_name, 'ไม่ระบุหน่วยงาน')
+			SELECT b.id, b.department_id, b.deposit_unit_id, dep_u.full_name AS deposit_unit_name,
+			       b.utility_type, COALESCE(b.provider, ''),
+			       COALESCE(b.service_number, ''), b.service_breakdown, b.invoice_status, b.payment_status,
+			       COALESCE(b.invoice_amount, 0), b.paid_amount,
+			       COALESCE(d.full_name, 'ไม่ระบุหน่วยงาน'),
+			       b.bill_code, b.invoice_number, b.payment_doc_number,
+			       b.attachment_receipt,
+			       b.is_reviewed,
+			       COALESCE(u_rev.name, b.reviewed_by) AS reviewed_by,
+			       b.reviewed_at,
+			       a.status AS audit_status,
+			       COALESCE(a.is_manual_anomaly, false) AS is_manual_anomaly,
+			       a.manual_anomaly_reason,
+			       a.manual_anomaly_detail,
+			       COALESCE(a.is_late_receive, false),
+			       COALESCE(a.is_late_payment, false),
+			       COALESCE(a.is_overdue_more_than_2_months, false),
+			       COALESCE(a.is_disbursement_over_2_months, false),
+			       COALESCE(a.is_wrong_month, false),
+			       COALESCE(a.is_phone_over_limit, false),
+			       COALESCE(a.is_phone_usage_over_limit, false),
+			       COALESCE(a.is_wrong_budget, false),
+			       COALESCE(a.is_duplicate, false),
+			       COALESCE(a.is_anomaly_expense, false),
+			       a.remarks
 			FROM utility_bills b
 			LEFT JOIN departments d ON d.id = b.department_id
+			LEFT JOIN departments dep_u ON dep_u.id = b.deposit_unit_id
+			LEFT JOIN audits a ON a.utility_bill_id = b.id
+			LEFT JOIN "user" u_rev ON b.reviewed_by = u_rev.id
 			WHERE b.billing_month = $1 AND b.billing_year = $2
 			  AND ($3 = '' OR b.department_id = $3 OR b.deposit_unit_id = $3)
 		`
@@ -766,32 +992,78 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 		defer bRows.Close()
 
 		type rawBill struct {
-			ID             string
-			DepartmentID   string
-			DepositUnitID  *string
-			UtilityType    string
-			Provider       string
-			ServiceNumber  string
-			InvoiceStatus  string
-			PaymentStatus  string
-			Amount         float64
-			DepartmentName string
+			ID                        string
+			DepartmentID              string
+			DepositUnitID             *string
+			DepositUnitName           *string
+			UtilityType               string
+			Provider                  string
+			ServiceNumber             string
+			ServiceBreakdown          *string
+			InvoiceStatus             string
+			PaymentStatus             string
+			Amount                    float64
+			PaidAmount                *float64
+			DepartmentName            string
+			BillCode                  *string
+			InvoiceNumber             *string
+			PaymentDocNumber          *string
+			AttachmentReceipt         *string
+			IsReviewed                bool
+			ReviewedBy                *string
+			ReviewedAt                *time.Time
+			AuditStatus               *string
+			IsManualAnomaly           bool
+			ManualAnomalyReason       *string
+			ManualAnomalyDetail       *string
+			IsLateReceive             bool
+			IsLatePayment             bool
+			IsOverdueMoreThan2Months  bool
+			IsDisbursementOver2Months bool
+			IsWrongMonth              bool
+			IsPhoneOverLimit          bool
+			IsPhoneUsageOverLimit     bool
+			IsWrongBudget             bool
+			IsDuplicate               bool
+			IsAnomalyExpense          bool
+			Remarks                   *string
 		}
 		var flattenedBills []rawBill
 		for bRows.Next() {
 			var b rawBill
 			if err := bRows.Scan(
-				&b.ID, &b.DepartmentID, &b.DepositUnitID, &b.UtilityType, &b.Provider,
-				&b.ServiceNumber, &b.InvoiceStatus, &b.PaymentStatus, &b.Amount,
-				&b.DepartmentName,
+				&b.ID, &b.DepartmentID, &b.DepositUnitID, &b.DepositUnitName,
+				&b.UtilityType, &b.Provider, &b.ServiceNumber, &b.ServiceBreakdown, &b.InvoiceStatus, &b.PaymentStatus,
+				&b.Amount, &b.PaidAmount, &b.DepartmentName,
+				&b.BillCode, &b.InvoiceNumber, &b.PaymentDocNumber,
+				&b.AttachmentReceipt,
+				&b.IsReviewed, &b.ReviewedBy, &b.ReviewedAt,
+				&b.AuditStatus, &b.IsManualAnomaly, &b.ManualAnomalyReason, &b.ManualAnomalyDetail,
+				&b.IsLateReceive, &b.IsLatePayment, &b.IsOverdueMoreThan2Months,
+				&b.IsDisbursementOver2Months, &b.IsWrongMonth, &b.IsPhoneOverLimit,
+				&b.IsPhoneUsageOverLimit, &b.IsWrongBudget, &b.IsDuplicate,
+				&b.IsAnomalyExpense, &b.Remarks,
 			); err == nil {
 				if strings.Contains(b.ServiceNumber, ",") {
 					parts := strings.Split(b.ServiceNumber, ",")
+					var breakdown map[string]string
+					if b.ServiceBreakdown != nil && *b.ServiceBreakdown != "" {
+						_ = json.Unmarshal([]byte(*b.ServiceBreakdown), &breakdown)
+					}
 					for _, part := range parts {
 						p := strings.TrimSpace(part)
 						if p != "" {
 							clone := b
 							clone.ServiceNumber = p
+							if breakdown != nil {
+								if amtStr, ok := breakdown[p]; ok {
+									if parsedAmt, err := strconv.ParseFloat(amtStr, 64); err == nil {
+										clone.Amount = parsedAmt
+									}
+								}
+							} else if len(parts) > 0 {
+								clone.Amount = b.Amount / float64(len(parts))
+							}
 							flattenedBills = append(flattenedBills, clone)
 						}
 					}
@@ -828,17 +1100,76 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 					}
 
 					billID := bill.ID
+					auditStatusStr := "NORMAL"
+					if bill.AuditStatus != nil && *bill.AuditStatus != "" {
+						auditStatusStr = *bill.AuditStatus
+					}
+					isReviewedVal := bill.IsReviewed
+					isManualAnomalyVal := bill.IsManualAnomaly
+
+					var auditIssues []string
+					if bill.IsLateReceive {
+						auditIssues = append(auditIssues, "ลงรับใบแจ้งหนี้ล่าช้า")
+					}
+					if bill.IsLatePayment {
+						auditIssues = append(auditIssues, "เบิกจ่ายล่าช้า")
+					}
+					if bill.IsOverdueMoreThan2Months {
+						auditIssues = append(auditIssues, "ค้างชำระเกิน 2 เดือน")
+					}
+					if bill.IsDisbursementOver2Months {
+						auditIssues = append(auditIssues, "เบิกจ่ายเกิน 2 เดือน")
+					}
+					if bill.IsWrongMonth {
+						auditIssues = append(auditIssues, "เบิกจ่ายผิดเดือน")
+					}
+					if bill.IsPhoneOverLimit {
+						auditIssues = append(auditIssues, "เบิกค่าโทรศัพท์เกินเกณฑ์")
+					}
+					if bill.IsPhoneUsageOverLimit {
+						auditIssues = append(auditIssues, "ใช้ค่าโทรศัพท์เกินเกณฑ์")
+					}
+					if bill.IsWrongBudget {
+						auditIssues = append(auditIssues, "เบิกจ่ายผิดงบประมาณ")
+					}
+					if bill.IsDuplicate {
+						auditIssues = append(auditIssues, "เบิกจ่ายซ้ำซ้อน")
+					}
+					if bill.IsAnomalyExpense {
+						auditIssues = append(auditIssues, "ค่าใช้จ่ายสูงผิดปกติ")
+					}
+					if bill.IsManualAnomaly && bill.ManualAnomalyReason != nil && *bill.ManualAnomalyReason != "" {
+						auditIssues = append(auditIssues, fmt.Sprintf("ระบุข้อผิดปกติ: %s", *bill.ManualAnomalyReason))
+					}
+					if bill.Remarks != nil && *bill.Remarks != "" {
+						auditIssues = append(auditIssues, fmt.Sprintf("หมายเหตุ: %s", *bill.Remarks))
+					}
+
 					items = append(items, BillTrackingItemDTO{
-						ID:             fmt.Sprintf("bill-%s-%s", bill.ID, bill.ServiceNumber),
-						DepartmentID:   bill.DepartmentID,
-						DepartmentName: bill.DepartmentName,
-						UtilityType:    bill.UtilityType,
-						Provider:       bill.Provider,
-						ServiceNumber:  bill.ServiceNumber,
-						Amount:         bill.Amount,
-						Status:         status,
-						IsExpected:     true,
-						BillID:         &billID,
+						ID:                  fmt.Sprintf("bill-%s-%s", bill.ID, bill.ServiceNumber),
+						DepartmentID:        bill.DepartmentID,
+						DepartmentName:      bill.DepartmentName,
+						DepositUnitName:     bill.DepositUnitName,
+						UtilityType:         bill.UtilityType,
+						Provider:            bill.Provider,
+						ServiceNumber:       bill.ServiceNumber,
+						BillCode:            bill.BillCode,
+						InvoiceNumber:       bill.InvoiceNumber,
+						PaymentDocNumber:    bill.PaymentDocNumber,
+						PaidAmount:          bill.PaidAmount,
+						Amount:              bill.Amount,
+						Status:              status,
+						IsExpected:          true,
+						BillID:              &billID,
+						AttachmentReceipt:   bill.AttachmentReceipt,
+						IsReviewed:          &isReviewedVal,
+						ReviewedBy:          bill.ReviewedBy,
+						ReviewedAt:          bill.ReviewedAt,
+						AuditStatus:         &auditStatusStr,
+						IsManualAnomaly:     &isManualAnomalyVal,
+						ManualAnomalyReason: bill.ManualAnomalyReason,
+						ManualAnomalyDetail: bill.ManualAnomalyDetail,
+						AuditIssues:         auditIssues,
 					})
 				}
 			} else {
@@ -869,17 +1200,76 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 				}
 
 				billID := bill.ID
+				auditStatusStr := "NORMAL"
+				if bill.AuditStatus != nil && *bill.AuditStatus != "" {
+					auditStatusStr = *bill.AuditStatus
+				}
+				isReviewedVal := bill.IsReviewed
+				isManualAnomalyVal := bill.IsManualAnomaly
+
+				var auditIssues []string
+				if bill.IsLateReceive {
+					auditIssues = append(auditIssues, "ลงรับใบแจ้งหนี้ล่าช้า")
+				}
+				if bill.IsLatePayment {
+					auditIssues = append(auditIssues, "เบิกจ่ายล่าช้า")
+				}
+				if bill.IsOverdueMoreThan2Months {
+					auditIssues = append(auditIssues, "ค้างชำระเกิน 2 เดือน")
+				}
+				if bill.IsDisbursementOver2Months {
+					auditIssues = append(auditIssues, "เบิกจ่ายเกิน 2 เดือน")
+				}
+				if bill.IsWrongMonth {
+					auditIssues = append(auditIssues, "เบิกจ่ายผิดเดือน")
+				}
+				if bill.IsPhoneOverLimit {
+					auditIssues = append(auditIssues, "เบิกค่าโทรศัพท์เกินเกณฑ์")
+				}
+				if bill.IsPhoneUsageOverLimit {
+					auditIssues = append(auditIssues, "ใช้ค่าโทรศัพท์เกินเกณฑ์")
+				}
+				if bill.IsWrongBudget {
+					auditIssues = append(auditIssues, "เบิกจ่ายผิดงบประมาณ")
+				}
+				if bill.IsDuplicate {
+					auditIssues = append(auditIssues, "เบิกจ่ายซ้ำซ้อน")
+				}
+				if bill.IsAnomalyExpense {
+					auditIssues = append(auditIssues, "ค่าใช้จ่ายสูงผิดปกติ")
+				}
+				if bill.IsManualAnomaly && bill.ManualAnomalyReason != nil && *bill.ManualAnomalyReason != "" {
+					auditIssues = append(auditIssues, fmt.Sprintf("ระบุข้อผิดปกติ: %s", *bill.ManualAnomalyReason))
+				}
+				if bill.Remarks != nil && *bill.Remarks != "" {
+					auditIssues = append(auditIssues, fmt.Sprintf("หมายเหตุ: %s", *bill.Remarks))
+				}
+
 				items = append(items, BillTrackingItemDTO{
-					ID:             fmt.Sprintf("bill-%s-%s", bill.ID, bill.ServiceNumber),
-					DepartmentID:   bill.DepartmentID,
-					DepartmentName: bill.DepartmentName,
-					UtilityType:    bill.UtilityType,
-					Provider:       bill.Provider,
-					ServiceNumber:  bill.ServiceNumber,
-					Amount:         bill.Amount,
-					Status:         status,
-					IsExpected:     false,
-					BillID:         &billID,
+					ID:                  fmt.Sprintf("bill-%s-%s", bill.ID, bill.ServiceNumber),
+					DepartmentID:        bill.DepartmentID,
+					DepartmentName:      bill.DepartmentName,
+					DepositUnitName:     bill.DepositUnitName,
+					UtilityType:         bill.UtilityType,
+					Provider:            bill.Provider,
+					ServiceNumber:       bill.ServiceNumber,
+					BillCode:            bill.BillCode,
+					InvoiceNumber:       bill.InvoiceNumber,
+					PaymentDocNumber:    bill.PaymentDocNumber,
+					PaidAmount:          bill.PaidAmount,
+					Amount:              bill.Amount,
+					Status:              status,
+					IsExpected:          false,
+					BillID:              &billID,
+					AttachmentReceipt:   bill.AttachmentReceipt,
+					IsReviewed:          &isReviewedVal,
+					ReviewedBy:          bill.ReviewedBy,
+					ReviewedAt:          bill.ReviewedAt,
+					AuditStatus:         &auditStatusStr,
+					IsManualAnomaly:     &isManualAnomalyVal,
+					ManualAnomalyReason: bill.ManualAnomalyReason,
+					ManualAnomalyDetail: bill.ManualAnomalyDetail,
+					AuditIssues:         auditIssues,
 				})
 			}
 		}
@@ -896,8 +1286,34 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool) {
 				summary.NotReceived++
 			case "PENDING_PAYMENT":
 				summary.Pending++
+				summary.PendingAmount += item.Amount
 			case "PAID":
 				summary.Paid++
+				summary.PaidAmount += item.Amount
+			}
+
+			if item.BillID != nil {
+				if item.IsReviewed != nil && *item.IsReviewed {
+					summary.Reviewed++
+				} else {
+					summary.Unreviewed++
+				}
+
+				if item.AuditStatus != nil {
+					if *item.AuditStatus == "PENDING_CORRECTION" {
+						if item.IsManualAnomaly != nil && *item.IsManualAnomaly {
+							summary.ManualAnomaly++
+						} else {
+							summary.AnomalyIssues++
+						}
+					} else if *item.AuditStatus == "CORRECTED" {
+						summary.Corrected++
+					} else {
+						summary.Normal++
+					}
+				} else {
+					summary.Normal++
+				}
 			}
 		}
 

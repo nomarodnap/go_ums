@@ -12,11 +12,14 @@ export interface DepartmentServiceDTO {
   departmentId: string;
   departmentName?: string;
   id: string;
+  isActive: boolean;
   locationType?: string;
+  phoneOwnerDivision?: string;
   phoneOwnerName?: string;
   phoneOwnerPosition?: string;
   phoneReimbursementLimit?: number;
   provider: string;
   serviceNumber: string;
+  suspendedAt?: string;
   utilityType: string;
 }

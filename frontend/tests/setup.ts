@@ -3,6 +3,15 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "./mocks/server";
 
+// Polyfill ResizeObserver and scrollIntoView for jsdom
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
+window.HTMLElement.prototype.scrollIntoView = function () {};
+
 // Start MSW mock server before all tests
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });

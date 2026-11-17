@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useListRoles } from "@/lib/api/generated/roles/roles";
 import {
   Sheet,
   SheetContent,
@@ -44,9 +45,21 @@ export function CreateUserSheet({
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>(
     department.id,
   );
+  const { data: rolesRes } = useListRoles();
+  const availableRoles = useMemo(() => {
+    if (Array.isArray(rolesRes?.data) && rolesRes.data.length > 0) {
+      return rolesRes.data;
+    }
+    return [
+      { id: "user", name: "ผู้ใช้งานทั่วไป" },
+      { id: "admin", name: "ผู้ดูแลระบบ" },
+      { id: "central_staff", name: "เจ้าหน้าที่ส่วนกลาง" },
+      { id: "regional_staff", name: "เจ้าหน้าที่ภูมิภาค" },
+      { id: "auditor", name: "ผู้ตรวจสอบภายใน (กตน.)" },
+    ];
+  }, [rolesRes]);
   const [role, setRole] = useState("user");
   const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
 
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
 
@@ -55,7 +68,11 @@ export function CreateUserSheet({
     const newErrors: { name?: string; email?: string } = {};
 
     if (!name.trim()) newErrors.name = "กรุณาระบุชื่อ-นามสกุล";
-    if (!email.trim()) newErrors.email = "กรุณาระบุอีเมล";
+    if (!email.trim()) {
+      newErrors.email = "กรุณาระบุอีเมล";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      newErrors.email = "รูปแบบอีเมลไม่ถูกต้อง (เช่น example@fisheries.go.th)";
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -71,7 +88,6 @@ export function CreateUserSheet({
           departmentId: selectedDepartmentId || department.id,
           role,
           phone: phone.trim() || undefined,
-          password: password ? password : undefined,
         },
       });
 
@@ -80,12 +96,11 @@ export function CreateUserSheet({
       });
 
       toast.success(
-        "เพิ่มบัญชีผู้ใช้งานสำเร็จ! ระบบได้บันทึกข้อมูลเรียบร้อยแล้ว",
+        "เพิ่มบัญชีผู้ใช้งานสำเร็จ! ระบบได้ส่งลิงก์สำหรับตั้งรหัสผ่านไปยังอีเมลเรียบร้อยแล้ว",
       );
       setName("");
       setEmail("");
       setPhone("");
-      setPassword("");
       onOpenChange(false);
     } catch (err: unknown) {
       const errorMsg =
@@ -96,7 +111,7 @@ export function CreateUserSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-md">
+      <SheetContent className="overflow-y-auto w-full sm:max-w-xl md:max-w-2xl">
         <SheetHeader>
           <SheetTitle className="text-foreground">เพิ่มบัญชีผู้ใช้งานใหม่</SheetTitle>
           <SheetDescription>
@@ -166,25 +181,15 @@ export function CreateUserSheet({
             <Select value={role} onValueChange={(val) => val && setRole(val)}>
               <SelectTrigger id="role">
                 <SelectValue placeholder="เลือกสิทธิ์">
-                  {role === "user"
-                    ? "ผู้ใช้งานทั่วไป (User)"
-                    : role === "admin"
-                      ? "ผู้ดูแลระบบ (Admin)"
-                      : role === "central_staff"
-                        ? "เจ้าหน้าที่ส่วนกลาง (Central Staff)"
-                        : role === "regional_staff"
-                          ? "เจ้าหน้าที่ภูมิภาค (Regional Staff)"
-                          : role === "auditor"
-                            ? "ผู้ตรวจสอบ (Auditor)"
-                            : role}
+                  {availableRoles.find((r) => r.id === role)?.name || role}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">ผู้ใช้งานทั่วไป (User)</SelectItem>
-                <SelectItem value="admin">ผู้ดูแลระบบ (Admin)</SelectItem>
-                <SelectItem value="central_staff">เจ้าหน้าที่ส่วนกลาง (Central Staff)</SelectItem>
-                <SelectItem value="regional_staff">เจ้าหน้าที่ภูมิภาค (Regional Staff)</SelectItem>
-                <SelectItem value="auditor">ผู้ตรวจสอบ (Auditor)</SelectItem>
+                {availableRoles.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -199,16 +204,6 @@ export function CreateUserSheet({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="password">กำหนดรหัสผ่านเบื้องต้น (เว้นว่างได้)</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="เว้นว่างเพื่อให้ผู้ใช้ตั้งรหัสผ่านเอง"
-            />
-          </div>
 
           <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border/40">
             <Button

@@ -18,11 +18,13 @@ import (
 	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/dof/ums-backend/internal/ai"
 	"github.com/dof/ums-backend/internal/auth"
 	"github.com/dof/ums-backend/internal/cache"
 	"github.com/dof/ums-backend/internal/config"
 	"github.com/dof/ums-backend/internal/email"
 	"github.com/dof/ums-backend/internal/handlers"
+	"github.com/dof/ums-backend/internal/linenotify"
 	"github.com/dof/ums-backend/internal/realtime"
 	"github.com/dof/ums-backend/internal/storage"
 	"github.com/dof/ums-backend/internal/worker"
@@ -94,13 +96,26 @@ func main() {
 
 	api := humachi.New(router, humaConfig)
 
-	// Initialize Email Service
+	// Initialize Email & LINE Department Notification Services
 	emailService := email.NewEmailService(cfg)
+	lineNotifier := linenotify.NewService(pool, cfg)
+
+	// Initialize AI Services (shared between HTTP handlers, Bill lifecycle, and River worker)
+	var summaryCache ai.CacheStore
+	if hybridCache != nil {
+		summaryCache = hybridCache
+	}
+	aiClient := ai.NewClient(cfg.GeminiAPIKey, cfg.GeminiModel)
+	aiTools := ai.NewToolExecutor(pool)
+	aiSummaryService := ai.NewSummaryService(aiClient, aiTools, pool, summaryCache)
+	aiSearchService := ai.NewSearchService(aiClient, pool)
+	aiForecastService := ai.NewForecastService(aiClient, pool, summaryCache)
+	aiChatService := ai.NewChatService(aiClient, aiTools)
 
 	// 4. Initialize River Background Job Queue (PostgreSQL-backed)
 	var taskDistributor worker.TaskDistributor
 	if pool != nil {
-		riverService, err := worker.NewRiverService(pool, emailService)
+		riverService, err := worker.NewRiverService(pool, emailService, aiSummaryService, lineNotifier)
 		if err != nil {
 			log.Printf("[River] Warning: Failed to initialize river service: %v", err)
 		} else {
@@ -130,13 +145,23 @@ func main() {
 	// 4. Register Domain Handlers
 	handlers.RegisterAuthRoutes(api, pool, cfg, emailService, taskDistributor)
 	handlers.RegisterDepartmentRoutes(api, pool)
-	handlers.RegisterBillRoutes(api, pool)
-	handlers.RegisterAuditRoutes(api, pool)
+	handlers.RegisterBillRoutes(api, pool, aiSearchService)
+	handlers.RegisterAuditRoutes(api, pool, lineNotifier)
 	handlers.RegisterBudgetRoutes(api, pool)
 	handlers.RegisterDashboardRoutes(api, pool)
-	handlers.RegisterNotificationRoutes(api, pool)
+	handlers.RegisterNotificationRoutes(api, pool, lineNotifier)
 	handlers.RegisterReportRoutes(api, pool)
 	handlers.RegisterUserRoutes(api, pool, cfg, emailService, taskDistributor)
+	handlers.RegisterRoleRoutes(api, pool)
+	handlers.RegisterAnnouncementRoutes(api, pool)
+	handlers.RegisterAIRoutesWithServices(api, pool, cfg, handlers.AIRouteDeps{
+		Summary:  aiSummaryService,
+		Search:   aiSearchService,
+		Forecast: aiForecastService,
+		Chat:     aiChatService,
+	})
+	handlers.RegisterLineChatRoutes(api, pool, lineNotifier)
+	handlers.RegisterLineWebhookRoutes(router, pool, cfg, lineNotifier, aiChatService)
 
 	// 5. Health check
 	router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -149,8 +174,8 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 90 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

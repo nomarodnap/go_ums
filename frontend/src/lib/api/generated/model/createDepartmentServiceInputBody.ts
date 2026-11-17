@@ -9,7 +9,9 @@ export interface CreateDepartmentServiceInputBody {
   /** A URL to the JSON Schema for this object. */
   readonly $schema?: string;
   departmentId: string;
+  isActive?: boolean;
   locationType?: string;
+  phoneOwnerDivision?: string;
   phoneOwnerName?: string;
   phoneOwnerPosition?: string;
   phoneReimbursementLimit?: number;

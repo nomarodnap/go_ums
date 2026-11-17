@@ -32,6 +32,9 @@ interface DepartmentComboboxProps {
   onValueChange?: (value: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  className?: string;
+  popoverClassName?: string;
+  id?: string;
 }
 
 export function DepartmentCombobox({
@@ -41,6 +44,9 @@ export function DepartmentCombobox({
   onValueChange,
   disabled,
   placeholder = "เลือกหน่วยงาน...",
+  className,
+  popoverClassName,
+  id,
 }: DepartmentComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [internalValue, setInternalValue] = React.useState(value || "");
@@ -52,7 +58,11 @@ export function DepartmentCombobox({
   }, [value]);
 
   const handleSelect = (exactValue: string) => {
-    const newValue = exactValue === internalValue ? "" : exactValue;
+    const isSelected =
+      internalValue === exactValue ||
+      selectedDepartment?.fullName === exactValue ||
+      selectedDepartment?.id === exactValue;
+    const newValue = isSelected ? "" : exactValue;
     setInternalValue(newValue);
     if (onValueChange) {
       onValueChange(newValue);
@@ -71,14 +81,17 @@ export function DepartmentCombobox({
         <PopoverTrigger
           render={
             <Button
+              id={id}
+              type="button"
               variant="outline"
               role="combobox"
               aria-expanded={open}
               className={cn(
-                "w-full justify-between font-normal",
+                "w-full justify-between font-normal text-left",
                 !internalValue && "text-muted-foreground",
                 disabled &&
                   "bg-muted cursor-not-allowed opacity-100 text-muted-foreground",
+                className,
               )}
               disabled={disabled}
             >
@@ -93,52 +106,73 @@ export function DepartmentCombobox({
             </Button>
           }
         />
-        <PopoverContent className="w-[400px] p-0" align="start">
+        <PopoverContent
+          className={cn(
+            "w-[var(--anchor-width,100%)] min-w-[340px] sm:min-w-[520px] max-w-[calc(100vw-2rem)] p-0 z-50",
+            popoverClassName,
+          )}
+          align="start"
+        >
           <Command
             filter={(value, search) => {
-              const dept = departments.find((d) => d.id === value);
+              const searchTrimmed = search.trim().toLowerCase();
+              if (!searchTrimmed) return 1;
+              const dept = departments.find(
+                (d) => d.id.toLowerCase() === value.toLowerCase(),
+              );
               if (!dept) return 0;
-              const searchLower = search.toLowerCase();
               if (
-                dept.fullName.toLowerCase().includes(searchLower) ||
+                dept.fullName.toLowerCase().includes(searchTrimmed) ||
                 (dept.shortName &&
-                  dept.shortName.toLowerCase().includes(searchLower)) ||
+                  dept.shortName.toLowerCase().includes(searchTrimmed)) ||
                 (dept.costCenterCode &&
-                  dept.costCenterCode.toLowerCase().includes(searchLower))
+                  dept.costCenterCode.toLowerCase().includes(searchTrimmed))
               ) {
                 return 1;
               }
               return 0;
             }}
           >
-            <CommandInput placeholder="ค้นหาจากชื่อเต็ม, ชื่อย่อ, รหัสศูนย์..." />
-            <CommandList>
-              <CommandEmpty>ไม่พบหน่วยงาน</CommandEmpty>
+            <CommandInput placeholder="พิมพ์เพื่อค้นหาชื่อหน่วยงาน, ชื่อย่อ, รหัสเบิกจ่าย..." />
+            <CommandList className="max-h-[320px] overflow-y-auto">
+              <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+                ไม่พบหน่วยงานที่ค้นหา
+              </CommandEmpty>
               <CommandGroup>
-                {departments.map((dept) => (
-                  <CommandItem
-                    key={dept.id}
-                    value={dept.id}
-                    onSelect={() => handleSelect(dept.id)}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4 flex-shrink-0",
-                        internalValue === dept.id ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <div className="flex flex-col overflow-hidden">
-                      <span className="truncate">{dept.fullName}</span>
-                      <span className="text-xs text-muted-foreground truncate">
-                        {dept.shortName ? `ย่อ: ${dept.shortName}` : ""}
-                        {dept.shortName && dept.costCenterCode ? " | " : ""}
-                        {dept.costCenterCode
-                          ? `รหัส: ${dept.costCenterCode}`
-                          : ""}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
+                {departments.map((dept) => {
+                  const isSelected =
+                    internalValue === dept.id ||
+                    internalValue === dept.fullName;
+                  return (
+                    <CommandItem
+                      key={dept.id}
+                      value={dept.id}
+                      onSelect={() => handleSelect(dept.id)}
+                      className="flex items-start gap-2.5 py-2.5 px-3 cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          "h-4 w-4 mt-0.5 shrink-0 text-primary",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm font-medium leading-snug break-words text-foreground">
+                          {dept.fullName}
+                        </span>
+                        {(dept.shortName || dept.costCenterCode) && (
+                          <span className="text-xs text-muted-foreground mt-0.5 leading-normal">
+                            {dept.shortName ? `ชื่อย่อ: ${dept.shortName}` : ""}
+                            {dept.shortName && dept.costCenterCode ? "  •  " : ""}
+                            {dept.costCenterCode
+                              ? `รหัสเบิกจ่าย: ${dept.costCenterCode}`
+                              : ""}
+                          </span>
+                        )}
+                      </div>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
           </Command>

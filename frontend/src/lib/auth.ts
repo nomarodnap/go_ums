@@ -78,6 +78,28 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return false;
 }
 
+export async function resolveLinkedLineEmail(lineAccountId: string): Promise<string | null> {
+  if (!lineAccountId) return null;
+  try {
+    const { rows } = await pool.query<{ email: string | null }>(
+      `
+      SELECT u.email
+      FROM "account" a
+      JOIN "user" u ON u.id = a.user_id
+      WHERE a.provider_id = 'line' AND a.account_id = $1
+      ORDER BY a.updated_at DESC
+      LIMIT 1
+      `,
+      [lineAccountId]
+    );
+    const email = typeof rows[0]?.email === "string" ? rows[0].email.trim().toLowerCase() : "";
+    return email || null;
+  } catch (error) {
+    console.warn("Failed to resolve linked LINE account email:", error);
+    return null;
+  }
+}
+
 export const auth = betterAuth({
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET || "super-secret-key-replace-me-in-production-1234567890",
@@ -98,6 +120,42 @@ export const auth = betterAuth({
         return verifyPassword(password, hash);
       },
     },
+  },
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      disableSignUp: true,
+      mapProfileToUser: (profile) => {
+        return {
+          image: profile.picture,
+        };
+      },
+    },
+    line: {
+      clientId: process.env.LINE_CLIENT_ID || "",
+      clientSecret: process.env.LINE_CLIENT_SECRET || "",
+      disableSignUp: true,
+      mapProfileToUser: async (profile) => {
+        const normalizedEmail =
+          typeof profile.email === "string" ? profile.email.trim().toLowerCase() : "";
+        if (normalizedEmail) {
+          return {
+            email: normalizedEmail,
+            image: profile.picture,
+          };
+        }
+        const lineSubject = typeof profile.sub === "string" ? profile.sub.trim() : "";
+        const linkedEmail = lineSubject ? await resolveLinkedLineEmail(lineSubject) : null;
+        return {
+          email: linkedEmail,
+          image: profile.picture,
+        };
+      },
+    },
+  },
+  onAPIError: {
+    errorURL: "/sign-in",
   },
   user: {
     fields: {
@@ -130,6 +188,12 @@ export const auth = betterAuth({
     },
   },
   account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google", "line"],
+      requireLocalEmailVerified: false,
+      allowDifferentEmails: true,
+    },
     fields: {
       userId: "user_id",
       accountId: "account_id",

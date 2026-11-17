@@ -4,10 +4,13 @@
  * ระบบรายงานค่าสาธารณูปโภค กรมประมง API
  * OpenAPI spec version: 2.0.0
  */
+import type { UserDTOPermissions } from './userDTOPermissions';
 
 export interface UserDTO {
   /** Account creation timestamp */
   createdAt: string;
+  /** Default landing page path for user role */
+  defaultPath?: string;
   /** Associated department ID */
   departmentId?: string;
   /** Associated department full name */
@@ -16,10 +19,18 @@ export interface UserDTO {
   email: string;
   /** User unique ID */
   id: string;
+  /** User avatar image URL */
+  image?: string;
+  /** Whether user is authenticated with Google */
+  isGoogle?: boolean;
   /** Full name */
   name: string;
+  /** Allowed page routes */
+  permissions: UserDTOPermissions;
   /** Phone number */
   phone?: string;
   /** User role: admin, auditor, strategy_finance, central_staff, regional_staff, user */
   role: string;
+  /** Display name of the user role */
+  roleName?: string;
 }

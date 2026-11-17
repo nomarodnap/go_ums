@@ -39,6 +39,16 @@ export default function DepartmentsPage() {
   const user = userRes?.status === 200 ? userRes.data.user : null;
   const userRole = user?.role || "user";
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดข้อมูลหน่วยงาน..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -57,16 +67,12 @@ export default function DepartmentsPage() {
         )}
       </div>
 
-      {isLoading ? (
-        <LoadingEffect message="กำลังโหลดข้อมูลหน่วยงาน..." />
-      ) : (
-        <DepartmentsTable
-          initialData={departments}
-          users={users}
-          services={services}
-          userRole={userRole}
-        />
-      )}
+      <DepartmentsTable
+        initialData={departments}
+        users={users}
+        services={services}
+        userRole={userRole}
+      />
 
       <DepartmentFormSheet
         open={isAddOpen}

@@ -6,9 +6,17 @@
  */
 
 export interface BillTrackingSummaryDTO {
+  anomalyIssues: number;
+  corrected: number;
+  manualAnomaly: number;
+  normal: number;
   notReceived: number;
   paid: number;
+  paidAmount: number;
   pending: number;
+  pendingAmount: number;
+  reviewed: number;
   total: number;
   unrecorded: number;
+  unreviewed: number;
 }

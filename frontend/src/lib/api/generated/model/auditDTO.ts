@@ -26,6 +26,7 @@ export interface AuditDTO {
   isPhoneUsageOverLimit: boolean;
   isWrongBudget: boolean;
   isWrongMonth: boolean;
+  manualAnomalyDetail?: string;
   manualAnomalyReason?: string;
   remarks?: string;
   status: string;

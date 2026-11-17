@@ -13,19 +13,25 @@ export default function NotificationsPage() {
       ? notifRes.data
       : [];
 
+  if (isLoading) {
+    return (
+      <LoadingEffect
+        fullScreen
+        message="กำลังโหลดรายการแจ้งเตือน..."
+        subMessage="ระบบรายงานค่าสาธารณูปโภค 292 หน่วยงาน กรมประมง"
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      {isLoading ? (
-        <LoadingEffect message="กำลังโหลดรายการแจ้งเตือน..." />
-      ) : (
-        <NotificationList
-          notifications={notifications}
-          title="การแจ้งเตือนของหน่วยงาน"
-          description="รายการแจ้งเตือนเฉพาะหน่วยงานที่ท่านสังกัดและประกาศสำคัญของระบบ"
-          scope="my_dept"
-          showDepartmentBadge={false}
-        />
-      )}
+      <NotificationList
+        notifications={notifications}
+        title="การแจ้งเตือนของหน่วยงาน"
+        description="รายการแจ้งเตือนเฉพาะหน่วยงานที่ท่านสังกัดและประกาศสำคัญของระบบ"
+        scope="my_dept"
+        showDepartmentBadge={false}
+      />
     </div>
   );
 }
