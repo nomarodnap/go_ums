@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   FileText,
   Building2,
@@ -17,9 +18,10 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
-import type {
-  ArchivedBillItem,
-  BillDeletionLogItem,
+import {
+  getBillLogs,
+  type ArchivedBillItem,
+  type BillDeletionLogItem,
 } from "@/server/actions/bills";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,11 +106,48 @@ function getNum(
   return null;
 }
 
+interface BillActivityLog {
+  id: string;
+  action: string;
+  details?: string | null;
+  createdAt: string;
+  userName?: string | null;
+  departmentName?: string | null;
+}
+
 export function ArchivedBillDetailDialog({
   bill,
   deletionLogs,
   onClose,
 }: ArchivedBillDetailDialogProps) {
+  const [billLogs, setBillLogs] = useState<BillActivityLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (bill?.id) {
+      setIsLoadingLogs(true);
+      getBillLogs(bill.id)
+        .then((logs) => {
+          if (!active) return;
+          setBillLogs(Array.isArray(logs) ? (logs as BillActivityLog[]) : []);
+        })
+        .catch(() => {
+          if (!active) return;
+          setBillLogs([]);
+        })
+        .finally(() => {
+          if (active) setIsLoadingLogs(false);
+        });
+    } else {
+      setBillLogs([]);
+      setIsLoadingLogs(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [bill?.id]);
+
   const d = bill?.billData;
   const invoiceStatus = getStr(d, "invoice_status") || "RECEIVED";
   const invoiceNumber = getStr(d, "invoice_number") || bill?.invoiceNumber;
@@ -166,9 +205,20 @@ export function ArchivedBillDetailDialog({
     }
   }
 
-  const billHistory = bill
-    ? deletionLogs.filter((l) => l.billId === bill.id)
+  const fallbackDeletionLogs: BillActivityLog[] = bill
+    ? deletionLogs
+        .filter((l) => l.billId === bill.id)
+        .map((l) => ({
+          id: l.id,
+          action: l.action,
+          details: l.reason || null,
+          createdAt: l.createdAt,
+          userName: l.performedByName || l.performedBy,
+          departmentName: l.departmentName || null,
+        }))
     : [];
+
+  const displayLogs = billLogs.length > 0 ? billLogs : fallbackDeletionLogs;
 
   return (
     <Dialog
@@ -834,32 +884,44 @@ export function ArchivedBillDetailDialog({
                   <Clock className="h-5 w-5 text-primary" /> ประวัติการทำรายการ
                 </h3>
 
-                {billHistory.length === 0 ? (
+                {isLoadingLogs ? (
+                  <div className="flex justify-center items-center h-32">
+                    <p className="text-muted-foreground animate-pulse">
+                      กำลังโหลดข้อมูล...
+                    </p>
+                  </div>
+                ) : displayLogs.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
                     <Clock className="h-8 w-8 mb-2 opacity-20" />
                     <p>ไม่มีประวัติการทำรายการ</p>
                   </div>
                 ) : (
                   <div className="relative border-l-2 border-muted ml-3 space-y-6">
-                    {billHistory.map((log) => (
+                    {displayLogs.map((log) => (
                       <div key={log.id} className="relative pl-6">
                         <div className="absolute -left-[9px] top-1 h-4 w-4 rounded-full border-2 border-background bg-primary"></div>
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                           <div>
                             <p className="font-medium text-sm">
+                              {log.action === "CREATED" && "สร้างรายการบิล"}
+                              {log.action === "UPDATED" && "แก้ไขข้อมูลบิล"}
+                              {log.action === "AUDITED" && "ตรวจสอบ/ประเมินบิล"}
                               {log.action === "ARCHIVED" && "ย้ายไปเก็บถาวร"}
                               {log.action === "RESTORED" && "กู้คืนเข้าสู่ระบบ"}
                               {log.action === "PERMANENTLY_DELETED" &&
                                 "ลบรายการถาวร"}
                               {![
+                                "CREATED",
+                                "UPDATED",
+                                "AUDITED",
                                 "ARCHIVED",
                                 "RESTORED",
                                 "PERMANENTLY_DELETED",
                               ].includes(log.action) && log.action}
                             </p>
-                            {log.reason && (
+                            {log.details && (
                               <p className="text-sm text-muted-foreground mt-1">
-                                {log.reason}
+                                {log.details}
                               </p>
                             )}
                           </div>
@@ -871,7 +933,7 @@ export function ArchivedBillDetailDialog({
                               )}
                             </p>
                             <p className="mt-1 font-medium">
-                              {log.performedByName || "ไม่ทราบชื่อผู้ใช้"}
+                              {log.userName || "ไม่ทราบชื่อผู้ใช้"}
                             </p>
                             {log.departmentName && (
                               <p className="opacity-80">{log.departmentName}</p>

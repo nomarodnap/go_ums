@@ -2312,7 +2312,9 @@ export function BillsTable({
                                 {log.action === "CREATED" && "สร้างรายการบิล"}
                                 {log.action === "UPDATED" && "แก้ไขข้อมูลบิล"}
                                 {log.action === "AUDITED" && "ตรวจสอบ/ประเมินบิล"}
-                                {!["CREATED", "UPDATED", "AUDITED"].includes(
+                                {log.action === "ARCHIVED" && "ย้ายไปเก็บถาวร"}
+                                {log.action === "RESTORED" && "กู้คืนเข้าสู่ระบบ"}
+                                {!["CREATED", "UPDATED", "AUDITED", "ARCHIVED", "RESTORED"].includes(
                                   log.action,
                                 ) && log.action}
                               </p>

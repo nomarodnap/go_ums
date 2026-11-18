@@ -275,6 +275,18 @@ func archiveBillTx(
 		return huma.Error500InternalServerError("failed to remove bill from active table: " + err.Error())
 	}
 
+	// Preserve & append activity log so full bill history remains visible in Archived and after Restore
+	archiveDetails := fmt.Sprintf("ย้ายบิล %s ไปเก็บถาวรโดย %s", billCode, actorName)
+	if reasonPtr != nil {
+		archiveDetails = fmt.Sprintf("%s (เหตุผล: %s)", archiveDetails, *reasonPtr)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO bill_activity_logs (id, bill_id, user_id, action, details, created_at)
+		VALUES ($1, $2, $3, 'ARCHIVED', $4, NOW())
+	`, uuid.New().String(), billID, user.UserID, archiveDetails); err != nil {
+		return huma.Error500InternalServerError("failed to record archive activity log: " + err.Error())
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return huma.Error500InternalServerError("failed to commit archive transaction")
 	}

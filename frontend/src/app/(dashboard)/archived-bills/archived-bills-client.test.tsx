@@ -9,10 +9,12 @@ import type {
 
 const restoreMock = vi.fn();
 const purgeMock = vi.fn();
+const getBillLogsMock = vi.fn();
 
 vi.mock("@/server/actions/bills", () => ({
   restoreArchivedBill: (...args: unknown[]) => restoreMock(...args),
   permanentlyDeleteArchivedBill: (...args: unknown[]) => purgeMock(...args),
+  getBillLogs: (...args: unknown[]) => getBillLogsMock(...args),
 }));
 
 const mockArchived: ArchivedBillItem[] = [
@@ -75,6 +77,35 @@ describe("ArchivedBillsClient", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    getBillLogsMock.mockResolvedValue([
+      {
+        id: "act-3",
+        billId: "bill-arch-1",
+        userId: "u-1",
+        userName: "เจ้าหน้าที่ทดสอบ",
+        action: "ARCHIVED",
+        details: "ย้ายบิล BILL-2569-001 ไปเก็บถาวรโดย เจ้าหน้าที่ทดสอบ",
+        createdAt: "2026-11-18T08:00:00Z",
+      },
+      {
+        id: "act-2",
+        billId: "bill-arch-1",
+        userId: "u-1",
+        userName: "เจ้าหน้าที่ทดสอบ",
+        action: "UPDATED",
+        details: "แก้ไขข้อมูลการเบิกจ่าย",
+        createdAt: "2026-10-12T09:30:00Z",
+      },
+      {
+        id: "act-1",
+        billId: "bill-arch-1",
+        userId: "u-1",
+        userName: "เจ้าหน้าที่ทดสอบ",
+        action: "CREATED",
+        details: "สร้างรายการบิลใหม่",
+        createdAt: "2026-10-08T08:15:00Z",
+      },
+    ]);
   });
 
   it("displays duplicate conflict alert when restore returns 409 conflict error", async () => {
@@ -206,8 +237,13 @@ describe("ArchivedBillsClient", () => {
     );
     expect(fileLinks[1]).toHaveAttribute("target", "_blank");
 
-    // Verify history tab inside modal
+    // Verify full preserved activity history tab inside modal
     await user.click(screen.getByRole("tab", { name: "ประวัติการทำรายการ" }));
-    expect(screen.getByText("ย้ายไปเก็บถาวร")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getBillLogsMock).toHaveBeenCalledWith("bill-arch-1");
+      expect(screen.getByText("สร้างรายการบิล")).toBeInTheDocument();
+      expect(screen.getByText("แก้ไขข้อมูลบิล")).toBeInTheDocument();
+      expect(screen.getByText("ย้ายไปเก็บถาวร")).toBeInTheDocument();
+    });
   });
 });
