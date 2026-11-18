@@ -182,11 +182,16 @@ describe("ArchivedBillsClient", () => {
     await user.click(screen.getByRole("button", { name: "ดูรายละเอียด" }));
 
     expect(
-      screen.getByText("รายละเอียดรายการบิลที่เก็บถาวร"),
+      screen.getByText("รายละเอียดรายการค่าใช้จ่าย"),
     ).toBeInTheDocument();
     expect(screen.getByText("INV-2569-888")).toBeInTheDocument();
     expect(screen.getByText("PAY-69-009")).toBeInTheDocument();
-    expect(screen.getByText("2 ไฟล์")).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "รายละเอียด" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "ประวัติการทำรายการ" }),
+    ).toBeInTheDocument();
 
     const fileLinks = screen.getAllByRole("link", { name: /ดูไฟล์เอกสาร/ });
     expect(fileLinks).toHaveLength(2);
@@ -200,5 +205,9 @@ describe("ArchivedBillsClient", () => {
       "/uploads/receipt-2569-001.pdf",
     );
     expect(fileLinks[1]).toHaveAttribute("target", "_blank");
+
+    // Verify history tab inside modal
+    await user.click(screen.getByRole("tab", { name: "ประวัติการทำรายการ" }));
+    expect(screen.getByText("ย้ายไปเก็บถาวร")).toBeInTheDocument();
   });
 });

@@ -657,6 +657,7 @@ export interface ArchivedBillItem {
   departmentCostCenter?: string;
   departmentType?: string;
   depositUnitId?: string;
+  depositUnitName?: string;
   utilityType: string;
   billingMonth: number;
   billingYear: number;

@@ -35,6 +35,7 @@ type ArchivedBillDTO struct {
 	DepartmentCostCenter *string        `json:"departmentCostCenter,omitempty"`
 	DepartmentType       *string        `json:"departmentType,omitempty"`
 	DepositUnitID        *string        `json:"depositUnitId,omitempty"`
+	DepositUnitName      *string        `json:"depositUnitName,omitempty"`
 	UtilityType          string         `json:"utilityType"`
 	BillingMonth         int            `json:"billingMonth"`
 	BillingYear          int            `json:"billingYear"`
@@ -328,12 +329,13 @@ func RegisterBillArchiveRoutes(
 
 		query := `
 			SELECT a.id, a.bill_code, a.department_id, COALESCE(a.department_name, d.full_name),
-			       d.short_name, d.cost_center_code, d.type, a.deposit_unit_id,
+			       d.short_name, d.cost_center_code, d.type, a.deposit_unit_id, du.full_name,
 			       a.utility_type, a.billing_month, a.billing_year, a.provider, a.service_number,
 			       a.invoice_number, COALESCE(a.invoice_amount, 0)::float8, a.payment_status,
 			       a.bill_data, a.archived_by, a.archived_by_name, a.archive_reason, a.archived_at
 			FROM archived_utility_bills a
 			LEFT JOIN departments d ON a.department_id = d.id
+			LEFT JOIN departments du ON a.deposit_unit_id = du.id
 			WHERE 1=1
 		`
 		args := []any{}
@@ -388,7 +390,7 @@ func RegisterBillArchiveRoutes(
 			var rawBillData []byte
 			if scanErr := rows.Scan(
 				&b.ID, &b.BillCode, &b.DepartmentID, &b.DepartmentName,
-				&b.DepartmentShortName, &b.DepartmentCostCenter, &b.DepartmentType, &b.DepositUnitID,
+				&b.DepartmentShortName, &b.DepartmentCostCenter, &b.DepartmentType, &b.DepositUnitID, &b.DepositUnitName,
 				&b.UtilityType, &b.BillingMonth, &b.BillingYear, &b.Provider, &b.ServiceNumber,
 				&b.InvoiceNumber, &b.InvoiceAmount, &b.PaymentStatus,
 				&rawBillData, &b.ArchivedBy, &b.ArchivedByName, &b.ArchiveReason, &b.ArchivedAt,
