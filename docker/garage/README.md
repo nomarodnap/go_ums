@@ -46,4 +46,5 @@ GARAGE_BUCKET="ums-uploads"
 - **3900**: S3 API Endpoint (สำหรับ Backend ติดต่อ Upload / Download)
 - **3901**: RPC Sync Port (สำหรับการสื่อสารระหว่างคลัสเตอร์โหนด)
 - **3902**: S3 Web Serving
-- **3903**: Admin API & Web UI
+- **3903**: Admin API
+- **3909**: Garage Web UI Console (`http://localhost:3909`)

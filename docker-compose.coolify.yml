@@ -16,7 +16,7 @@ services:
       # Internal URL สำหรับ Next.js Server Components / Actions ติดต่อ Go Backend ภายใน Docker
       - INTERNAL_API_URL=http://backend:8080
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
-      - BETTER_AUTH_URL=http://192.168.171.97:10000
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://ums.fisheries.go.th}
       - BETTER_AUTH_SECRET=${JWT_SECRET}
       - DATABASE_URL=${DATABASE_URL}
       - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
@@ -32,15 +32,35 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=coolify"
       # 1. Better Auth (Next.js API route handlers) - Priority 100
-      - "traefik.http.routers.ums-auth.rule=PathPrefix(`/api/auth`)"
-      - "traefik.http.routers.ums-auth.entrypoints=port10000,http"
-      - "traefik.http.routers.ums-auth.priority=100"
-      - "traefik.http.routers.ums-auth.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-auth-https.rule=Host(`ums.fisheries.go.th`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.ums-auth-https.entrypoints=https"
+      - "traefik.http.routers.ums-auth-https.priority=100"
+      - "traefik.http.routers.ums-auth-https.tls=true"
+      - "traefik.http.routers.ums-auth-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ums-auth-https.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-auth-http.rule=Host(`ums.fisheries.go.th`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.ums-auth-http.entrypoints=http"
+      - "traefik.http.routers.ums-auth-http.priority=100"
+      - "traefik.http.routers.ums-auth-http.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-auth-p10000.rule=PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.ums-auth-p10000.entrypoints=port10000"
+      - "traefik.http.routers.ums-auth-p10000.priority=100"
+      - "traefik.http.routers.ums-auth-p10000.service=ums-frontend-svc"
       # 2. Web UI Application - Priority 10
-      - "traefik.http.routers.ums-frontend.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.ums-frontend.entrypoints=port10000,http"
-      - "traefik.http.routers.ums-frontend.priority=10"
-      - "traefik.http.routers.ums-frontend.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-frontend-https.rule=Host(`ums.fisheries.go.th`)"
+      - "traefik.http.routers.ums-frontend-https.entrypoints=https"
+      - "traefik.http.routers.ums-frontend-https.priority=10"
+      - "traefik.http.routers.ums-frontend-https.tls=true"
+      - "traefik.http.routers.ums-frontend-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ums-frontend-https.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-frontend-http.rule=Host(`ums.fisheries.go.th`)"
+      - "traefik.http.routers.ums-frontend-http.entrypoints=http"
+      - "traefik.http.routers.ums-frontend-http.priority=10"
+      - "traefik.http.routers.ums-frontend-http.service=ums-frontend-svc"
+      - "traefik.http.routers.ums-frontend-p10000.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.ums-frontend-p10000.entrypoints=port10000"
+      - "traefik.http.routers.ums-frontend-p10000.priority=10"
+      - "traefik.http.routers.ums-frontend-p10000.service=ums-frontend-svc"
       # Service definition
       - "traefik.http.services.ums-frontend-svc.loadbalancer.server.port=3000"
 
@@ -81,16 +101,21 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=coolify"
-      # 1. Go REST API & SSE Events Hub - Priority 50
-      - "traefik.http.routers.ums-api.rule=PathPrefix(`/api`)"
-      - "traefik.http.routers.ums-api.entrypoints=port10000,http"
-      - "traefik.http.routers.ums-api.priority=50"
-      - "traefik.http.routers.ums-api.service=ums-backend-svc"
-      # 2. File Uploads - Priority 50
-      - "traefik.http.routers.ums-uploads.rule=PathPrefix(`/uploads`)"
-      - "traefik.http.routers.ums-uploads.entrypoints=port10000,http"
-      - "traefik.http.routers.ums-uploads.priority=50"
-      - "traefik.http.routers.ums-uploads.service=ums-backend-svc"
+      # Go REST API, SSE (/api/events), File Uploads, Docs & Health - Priority 50
+      - "traefik.http.routers.ums-backend-https.rule=Host(`ums.fisheries.go.th`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.ums-backend-https.entrypoints=https"
+      - "traefik.http.routers.ums-backend-https.priority=50"
+      - "traefik.http.routers.ums-backend-https.tls=true"
+      - "traefik.http.routers.ums-backend-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ums-backend-https.service=ums-backend-svc"
+      - "traefik.http.routers.ums-backend-http.rule=Host(`ums.fisheries.go.th`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/health`))"
+      - "traefik.http.routers.ums-backend-http.entrypoints=http"
+      - "traefik.http.routers.ums-backend-http.priority=50"
+      - "traefik.http.routers.ums-backend-http.service=ums-backend-svc"
+      - "traefik.http.routers.ums-backend-p10000.rule=PathPrefix(`/api`) || PathPrefix(`/uploads`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`) || PathPrefix(`/health`)"
+      - "traefik.http.routers.ums-backend-p10000.entrypoints=port10000"
+      - "traefik.http.routers.ums-backend-p10000.priority=50"
+      - "traefik.http.routers.ums-backend-p10000.service=ums-backend-svc"
       # Service definition
       - "traefik.http.services.ums-backend-svc.loadbalancer.server.port=8080"
 

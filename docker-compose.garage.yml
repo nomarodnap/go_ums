@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   garage:
     image: dxflrs/garage:v1.1.0
@@ -14,6 +12,20 @@ services:
       - ./docker/garage/garage.toml:/etc/garage.toml:ro
       - ums_garage_meta:/var/lib/garage/meta
       - ums_garage_data:/var/lib/garage/data
+
+  garage-webui:
+    image: khairul169/garage-webui:1.0.9
+    container_name: ums_garage_webui
+    restart: unless-stopped
+    depends_on:
+      - garage
+    ports:
+      - "3909:3909" # Web UI Console
+    volumes:
+      - ./docker/garage/garage.toml:/etc/garage.toml:ro
+    environment:
+      - API_BASE_URL=http://garage:3903
+      - S3_ENDPOINT_URL=http://garage:3900
 
 volumes:
   ums_garage_meta:
