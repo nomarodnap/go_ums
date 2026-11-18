@@ -159,6 +159,12 @@ export const TaraAvatar = React.memo(function TaraAvatar({
     setLive2DLoaded(true);
   }, []);
 
+  useEffect(() => {
+    if (!isLive2DActive) {
+      setLive2DLoaded(false);
+    }
+  }, [isLive2DActive]);
+
   // Derive active emotional state
   const activeEmotion: TaraEmotion = isThinking
     ? "thinking"
@@ -175,17 +181,14 @@ export const TaraAvatar = React.memo(function TaraAvatar({
     <div
       ref={containerRef}
       className={cn(
-        "relative flex flex-col items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-slate-950 via-[#0a1128] to-[#04081e] text-white shadow-2xl select-none transition-all duration-300",
+        "relative flex flex-col items-center justify-center overflow-hidden rounded-3xl border border-border/80 bg-gradient-to-b from-white via-slate-50/70 to-white dark:from-card dark:via-card dark:to-background text-foreground shadow-md select-none transition-all duration-300",
         className
       )}
-      style={{
-        boxShadow: `0 20px 60px -10px ${currentConfig.haloColor}, 0 0 0 1px rgba(255, 255, 255, 0.08)`,
-      }}
     >
       {/* Top Face Call HUD Header */}
       <div className="absolute top-3 inset-x-3 z-30 flex items-center justify-between gap-2 px-1 text-xs">
         {/* Call status badge */}
-        <div className="flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 border border-white/15 shadow-xs">
+        <div className="flex items-center gap-2 rounded-full bg-white/90 dark:bg-card/90 backdrop-blur-md px-3 py-1 border border-border/80 shadow-xs">
           <span className="relative flex size-2.5">
             <span
               className={cn(
@@ -208,11 +211,11 @@ export const TaraAvatar = React.memo(function TaraAvatar({
               )}
             />
           </span>
-          <span className="font-semibold text-[11px] tracking-wide text-white/95">
+          <span className="font-semibold text-[11px] tracking-wide text-foreground">
             FACE CALL LIVE
           </span>
-          <span className="text-white/40">•</span>
-          <span className="text-[10px] text-sky-400 font-mono">1080p 60fps</span>
+          <span className="text-muted-foreground/50">•</span>
+          <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono">1080p 60fps</span>
         </div>
 
         {/* Live2D Interactive Badge & Audio toggle */}
@@ -222,22 +225,22 @@ export const TaraAvatar = React.memo(function TaraAvatar({
             onClick={handleToggleLive2D}
             title={
               isLive2DActive
-                ? "คลิกเพื่อปิด 2D Live (เปลี่ยนเป็นภาพนิ่ง ประหยัดทรัพยากร)"
+                ? "คลิกเพื่อปิด 2D Live (ซ่อนแผง Live 2D และใช้งานแชทเต็มหน้าจอ)"
                 : "คลิกเพื่อเปิด 2D Live (แอนิเมชันขยับตามเมาส์)"
             }
             className={cn(
               "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all cursor-pointer backdrop-blur-md border shadow-xs select-none",
               isLive2DActive
-                ? "bg-sky-500/20 text-sky-300 border-sky-500/40 hover:bg-sky-500/30"
-                : "bg-black/50 text-white/50 border-white/10 hover:text-white/80 hover:border-white/20"
+                ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30 hover:bg-sky-500/15"
+                : "bg-muted/80 text-muted-foreground border-border hover:text-foreground"
             )}
           >
-            <Sparkles className={cn("size-3", isLive2DActive ? "text-sky-400 animate-pulse" : "text-white/40")} />
+            <Sparkles className={cn("size-3", isLive2DActive ? "text-sky-500 animate-pulse" : "text-muted-foreground")} />
             <span>{isLive2DActive ? "Live2D ขยับตามเมาส์" : "2D Live ปิดอยู่ (ภาพนิ่ง)"}</span>
             <span
               className={cn(
                 "inline-block size-1.5 rounded-full",
-                isLive2DActive ? "bg-emerald-400" : "bg-white/30"
+                isLive2DActive ? "bg-emerald-500" : "bg-muted-foreground/40"
               )}
             />
           </button>
@@ -255,8 +258,8 @@ export const TaraAvatar = React.memo(function TaraAvatar({
               className={cn(
                 "flex size-7 items-center justify-center rounded-full border transition-colors cursor-pointer",
                 voiceEnabled
-                  ? "bg-primary text-white border-primary/40 shadow-xs"
-                  : "bg-black/40 text-white/60 border-white/10 hover:text-white"
+                  ? "bg-primary text-primary-foreground border-primary/40 shadow-xs"
+                  : "bg-muted text-muted-foreground border-border hover:text-foreground"
               )}
             >
               {voiceEnabled ? (
@@ -269,17 +272,17 @@ export const TaraAvatar = React.memo(function TaraAvatar({
         </div>
       </div>
 
-      {/* Background Holographic Studio Lighting */}
+      {/* Background Ambient Lighting (Light Theme Friendly) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {/* Radial ambient glow */}
         <div
-          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] h-[440px] rounded-full blur-3xl opacity-35 transition-all duration-700 pointer-events-none"
+          className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] h-[440px] rounded-full blur-3xl opacity-20 dark:opacity-30 transition-all duration-700 pointer-events-none"
           style={{
             backgroundColor: currentConfig.haloColor,
           }}
         />
-        {/* Subtle high-tech grid */}
-        <div className="absolute inset-0 opacity-[0.05] bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:18px_18px]" />
+        {/* Subtle dot grid */}
+        <div className="absolute inset-0 opacity-[0.06] dark:opacity-[0.05] bg-[radial-gradient(#0284c7_1px,transparent_1px)] [background-size:18px_18px]" />
 
         {/* Thinking Radar Scan Rings */}
         {activeEmotion === "thinking" && (
@@ -304,17 +307,17 @@ export const TaraAvatar = React.memo(function TaraAvatar({
             className={cn(
               "absolute size-60 sm:size-68 rounded-full border-2 transition-all duration-500 pointer-events-none",
               activeEmotion === "alert"
-                ? "border-amber-500/50 shadow-[0_0_35px_rgba(245,158,11,0.35)]"
+                ? "border-amber-500/50 shadow-[0_0_25px_rgba(245,158,11,0.25)]"
                 : activeEmotion === "thinking"
-                  ? "border-purple-500/50 shadow-[0_0_35px_rgba(168,85,247,0.35)]"
+                  ? "border-purple-500/50 shadow-[0_0_25px_rgba(168,85,247,0.25)]"
                   : activeEmotion === "speaking"
-                    ? "border-emerald-500/50 shadow-[0_0_35px_rgba(16,185,129,0.35)]"
-                    : "border-sky-500/40 shadow-[0_0_25px_rgba(14,165,233,0.25)]"
+                    ? "border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.25)]"
+                    : "border-sky-500/35 shadow-[0_0_20px_rgba(14,165,233,0.15)]"
             )}
           />
 
           {/* Live2D Avatar Frame */}
-          <div className="relative size-56 sm:size-64 rounded-full overflow-hidden border-2 border-white/25 shadow-2xl bg-slate-950">
+          <div className="relative size-56 sm:size-64 rounded-full overflow-hidden border-2 border-border shadow-md bg-gradient-to-b from-sky-50/70 to-white dark:from-slate-900 dark:to-slate-950">
             {/* Fallback image and static portrait mode */}
             <div
               className={cn(
@@ -348,14 +351,14 @@ export const TaraAvatar = React.memo(function TaraAvatar({
         {/* Character Title & Anime Identity Badge */}
         <div className="text-center mt-1 space-y-0.5">
           <div className="flex items-center justify-center gap-1.5">
-            <h3 className="font-bold text-base sm:text-lg text-white tracking-tight flex items-center gap-1.5">
+            <h3 className="font-bold text-base sm:text-lg text-foreground tracking-tight flex items-center gap-1.5">
               <span>น้องธาร่า</span>
-              <span className="text-xs font-normal text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/25">
+              <span className="text-xs font-normal text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/25">
                 Tara AI 🌸
               </span>
             </h3>
           </div>
-          <p className="text-xs text-slate-300 font-medium">
+          <p className="text-xs text-muted-foreground font-medium">
             ผู้เชี่ยวชาญด้านงบประมาณและสาธารณูปโภค (292 หน่วยงาน กรมประมง)
           </p>
         </div>
@@ -388,14 +391,14 @@ export const TaraAvatar = React.memo(function TaraAvatar({
             className={cn(
               "w-1 rounded-full transition-all duration-150",
               activeEmotion === "speaking"
-                ? "bg-emerald-400 animate-pulse"
+                ? "bg-emerald-500 animate-pulse"
                 : activeEmotion === "listening"
-                  ? "bg-sky-400"
+                  ? "bg-sky-500"
                   : activeEmotion === "thinking"
-                    ? "bg-purple-400"
+                    ? "bg-purple-500"
                     : activeEmotion === "alert"
-                      ? "bg-amber-400"
-                      : "bg-white/20"
+                      ? "bg-amber-500"
+                      : "bg-border"
             )}
             style={{
               height:
@@ -413,9 +416,9 @@ export const TaraAvatar = React.memo(function TaraAvatar({
       {/* In-Call Live Closed Caption / Subtitle Overlay */}
       {subtitleText && (
         <div className="relative z-10 w-full px-4 pb-3">
-          <div className="mx-auto max-w-md rounded-2xl bg-black/65 backdrop-blur-md px-3.5 py-2 border border-white/10 text-center shadow-lg">
-            <p className="text-xs sm:text-sm text-white/95 leading-relaxed font-sans line-clamp-2">
-              <span className="text-sky-300 font-semibold mr-1.5">
+          <div className="mx-auto max-w-md rounded-2xl bg-white/90 dark:bg-card/90 backdrop-blur-md px-3.5 py-2 border border-border/80 text-center shadow-xs">
+            <p className="text-xs sm:text-sm text-foreground leading-relaxed font-sans line-clamp-2">
+              <span className="text-sky-600 dark:text-sky-400 font-semibold mr-1.5">
                 น้องธาร่า 🌸:
               </span>
               {subtitleText}

@@ -61,6 +61,7 @@ vi.mock("@/lib/api/ai-hooks", async (importOriginal) => {
 describe("AllAIAssistantPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mockStatusResult = {
       data: {
         enabled: true,
@@ -97,14 +98,22 @@ describe("AllAIAssistantPage", () => {
     expect(screen.getByRole("button", { name: /2D Live: เปิด/ })).toBeInTheDocument();
   });
 
-  it("toggles 2D Live mode when clicking the header toggle button", async () => {
+  it("toggles 2D Live panel off and on when clicking the header toggle button", async () => {
     const user = userEvent.setup();
     render(<AllAIAssistantPage />);
+
+    expect(screen.getByText("FACE CALL LIVE")).toBeInTheDocument();
 
     const live2dBtn = screen.getByRole("button", { name: /2D Live: เปิด/ });
     await user.click(live2dBtn);
 
     expect(screen.getByRole("button", { name: /2D Live: ปิด/ })).toBeInTheDocument();
+    expect(screen.queryByText("FACE CALL LIVE")).not.toBeInTheDocument();
+
+    // Turning back on restores the Live 2D panel
+    await user.click(screen.getByRole("button", { name: /2D Live: ปิด/ }));
+    expect(screen.getByRole("button", { name: /2D Live: เปิด/ })).toBeInTheDocument();
+    expect(screen.getByText("FACE CALL LIVE")).toBeInTheDocument();
   });
 
   it("sends whole-department prompt with scope 'all' when clicking a featured card", async () => {

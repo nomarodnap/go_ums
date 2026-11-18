@@ -334,20 +334,20 @@ export const Live2DAvatarCanvas = React.memo(function Live2DAvatarCanvas({
       }`}
     >
       {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/40 backdrop-blur-xs z-20 text-cyan-300">
-          <Loader2 className="w-7 h-7 animate-spin mb-2 text-cyan-400" />
-          <span className="text-[11px] tracking-wider font-mono">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-card/80 backdrop-blur-xs z-20 text-primary">
+          <Loader2 className="w-7 h-7 animate-spin mb-2 text-primary" />
+          <span className="text-[11px] tracking-wider font-mono text-muted-foreground">
             กำลังโหลด Live2D Engine...
           </span>
         </div>
       )}
 
       {loadError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 p-4 text-center z-20">
-          <p className="text-xs text-rose-400 font-mono mb-1">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 dark:bg-card/90 p-4 text-center z-20">
+          <p className="text-xs text-destructive font-mono mb-1">
             Live2D Error: {loadError}
           </p>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-muted-foreground">
             โปรดตรวจสอบการรองรับ WebGL ของเบราว์เซอร์
           </span>
         </div>
