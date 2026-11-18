@@ -29,6 +29,7 @@ import type {
   ListNotifications200,
   ListNotificationsParams,
   MarkAllNotificationsReadParams,
+  MarkNotificationReadRequest,
   RunNotificationEngineParams,
   RunNotificationEngineResponse
 } from '.././model';
@@ -355,11 +356,14 @@ export const useRunNotificationEngine = <TError = ErrorModel,
  */
 export const markNotificationRead = (
     id: string,
+    markNotificationReadRequest: MarkNotificationReadRequest,
  options?: SecondParameter<typeof customInstance>,) => {
       
       
       return customInstance<boolean>(
-      {url: `/api/notifications/${id}/read`, method: 'PUT'
+      {url: `/api/notifications/${id}/read`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: markNotificationReadRequest
     },
       options);
     }
@@ -367,8 +371,8 @@ export const markNotificationRead = (
 
 
 export const getMarkNotificationReadMutationOptions = <TError = ErrorModel,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
-): UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string;data: MarkNotificationReadRequest}, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string;data: MarkNotificationReadRequest}, TContext> => {
 
 const mutationKey = ['markNotificationRead'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -380,10 +384,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markNotificationRead>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markNotificationRead>>, {id: string;data: MarkNotificationReadRequest}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  markNotificationRead(id,requestOptions)
+          return  markNotificationRead(id,data,requestOptions)
         }
 
         
@@ -392,18 +396,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type MarkNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markNotificationRead>>>
-    
+    export type MarkNotificationReadMutationBody = MarkNotificationReadRequest
     export type MarkNotificationReadMutationError = ErrorModel
 
     /**
  * @summary Mark notification as read / Acknowledge
  */
 export const useMarkNotificationRead = <TError = ErrorModel,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customInstance>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markNotificationRead>>, TError,{id: string;data: MarkNotificationReadRequest}, TContext>, request?: SecondParameter<typeof customInstance>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof markNotificationRead>>,
         TError,
-        {id: string},
+        {id: string;data: MarkNotificationReadRequest},
         TContext
       > => {
 

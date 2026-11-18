@@ -12,6 +12,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertCircle,
   AlertTriangle,
@@ -21,6 +31,7 @@ import {
   Search,
   CheckCheck,
   Bell,
+  MessageSquareText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -51,6 +62,8 @@ export function NotificationList({
   const [filterStatus, setFilterStatus] = useState<"ALL" | "UNREAD" | "READ">(
     "ALL",
   );
+  const [ackTarget, setAckTarget] = useState<NotificationDTO | null>(null);
+  const [ackReason, setAckReason] = useState("");
 
   const markReadMutation = useMarkNotificationRead({
     mutation: {
@@ -61,6 +74,8 @@ export function NotificationList({
         queryClient.invalidateQueries({
           queryKey: getGetNotificationCountsQueryKey(),
         });
+        setAckTarget(null);
+        setAckReason("");
         toast.success("บันทึกการรับทราบเรียบร้อยแล้ว");
       },
       onError: () => {
@@ -86,8 +101,18 @@ export function NotificationList({
     },
   });
 
-  const handleMarkAsRead = (id: string) => {
-    markReadMutation.mutate({ id });
+  const handleOpenAckDialog = (notif: NotificationDTO) => {
+    setAckTarget(notif);
+    setAckReason("");
+  };
+
+  const handleConfirmAcknowledge = () => {
+    const trimmed = ackReason.trim();
+    if (!ackTarget || !trimmed) return;
+    markReadMutation.mutate({
+      id: ackTarget.id,
+      data: { reason: trimmed },
+    });
   };
 
   const handleMarkAllAsRead = () => {
@@ -299,12 +324,17 @@ export function NotificationList({
                           )}
                           {!notif.isRead ? (
                             <span className="flex size-2 rounded-full bg-primary animate-pulse" />
-                          ) : isAnomalyEdited ? (
+                          ) : isAnomalyEdited ||
+                            notif.acknowledgedReason ||
+                            notif.acknowledgedBy ? (
                             <Badge
                               variant="outline"
                               className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/10 font-medium"
                             >
-                              รับทราบแล้ว{notif.acknowledgedBy ? ` โดย ${notif.acknowledgedBy}` : ""}
+                              รับทราบแล้ว
+                              {notif.acknowledgedBy
+                                ? ` โดย ${notif.acknowledgedBy}`
+                                : ""}
                             </Badge>
                           ) : (
                             <Badge
@@ -336,6 +366,27 @@ export function NotificationList({
                       >
                         {notif.message}
                       </p>
+                      {notif.isRead && notif.acknowledgedReason && (
+                        <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08] border border-emerald-500/20 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
+                          <MessageSquareText className="size-3.5 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="leading-relaxed break-words">
+                              <span className="font-semibold">เหตุผลการรับทราบ:</span>{" "}
+                              {notif.acknowledgedReason}
+                            </p>
+                            {notif.acknowledgedAt && (
+                              <p className="text-[11px] text-emerald-700/75 dark:text-emerald-300/75">
+                                บันทึกเมื่อ{" "}
+                                {format(
+                                  new Date(notif.acknowledgedAt),
+                                  "d MMM yyyy HH:mm น.",
+                                  { locale: th },
+                                )}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-shrink-0 flex flex-col gap-1.5 items-end pl-2">
@@ -354,7 +405,7 @@ export function NotificationList({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleMarkAsRead(notif.id)}
+                          onClick={() => handleOpenAckDialog(notif)}
                           disabled={markReadMutation.isPending}
                           className="text-xs h-7.5 rounded-lg px-2.5 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-medium"
                         >
@@ -369,6 +420,84 @@ export function NotificationList({
           })}
         </div>
       )}
+
+      {/* Acknowledge Reason Dialog */}
+      <Dialog
+        open={ackTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !markReadMutation.isPending) {
+            setAckTarget(null);
+            setAckReason("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              ยืนยันการรับทราบการแจ้งเตือน
+            </DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed">
+              {ackTarget?.title}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {ackTarget?.message && (
+              <div className="rounded-xl bg-muted/50 border border-black/[0.06] dark:border-white/[0.08] px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">
+                {ackTarget.message}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="acknowledge-reason" className="text-xs font-semibold">
+                เหตุผล / การดำเนินการที่รับทราบ{" "}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="acknowledge-reason"
+                value={ackReason}
+                onChange={(e) => setAckReason(e.target.value)}
+                placeholder="ระบุเหตุผลหรือแนวทางการดำเนินการ เช่น อยู่ระหว่างดำเนินการเบิกจ่าย / ตรวจสอบแก้ไขข้อมูลแล้ว..."
+                rows={3}
+                className="text-xs rounded-xl resize-none"
+                disabled={markReadMutation.isPending}
+              />
+              {ackReason.length > 0 && ackReason.trim().length === 0 && (
+                <p className="text-[11px] text-destructive">
+                  กรุณาระบุเหตุผลหรือหมายเหตุการรับทราบ
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl text-xs"
+              onClick={() => {
+                setAckTarget(null);
+                setAckReason("");
+              }}
+              disabled={markReadMutation.isPending}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-xl text-xs font-semibold"
+              onClick={handleConfirmAcknowledge}
+              disabled={
+                ackReason.trim().length === 0 || markReadMutation.isPending
+              }
+            >
+              {markReadMutation.isPending ? "กำลังบันทึก..." : "ยืนยันรับทราบ"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

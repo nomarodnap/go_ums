@@ -58,6 +58,7 @@ const mockNotifications: NotificationDTO[] = [
     createdAt: "2026-10-26T11:00:00Z",
     type: "MANUAL_ANOMALY_EDITED",
     acknowledgedBy: "สมชาย ผู้ตรวจสอบ",
+    acknowledgedReason: "ตรวจสอบข้อมูลหลังแก้ไขเรียบร้อยแล้ว",
   },
 ];
 
@@ -86,27 +87,52 @@ describe("NotificationList Component", () => {
     );
   };
 
-  it("renders notifications and displays read status correctly", () => {
+  it("renders notifications and displays read status and acknowledged reason correctly", () => {
     renderComponent();
 
     expect(screen.getByText("แจ้งเตือนหนี้ค้างชำระ")).toBeInTheDocument();
     expect(screen.getByText("บิลค่าน้ำประปาเกินกำหนด")).toBeInTheDocument();
     expect(screen.getByText("อ่านแล้ว")).toBeInTheDocument();
     expect(screen.getByText("รับทราบแล้ว โดย สมชาย ผู้ตรวจสอบ")).toBeInTheDocument();
+    expect(
+      screen.getByText("ตรวจสอบข้อมูลหลังแก้ไขเรียบร้อยแล้ว"),
+    ).toBeInTheDocument();
   });
 
-  it("calls mutate with id when clicking รับทราบ directly", async () => {
+  it("opens required-reason dialog when clicking รับทราบ and submits reason on confirm", async () => {
     const user = userEvent.setup();
     renderComponent({ showAcknowledgeButton: true });
 
-    // Buttons with "รับทราบ"
     const ackButtons = screen.getAllByRole("button", { name: "รับทราบ" });
     expect(ackButtons.length).toBeGreaterThan(0);
 
     await user.click(ackButtons[0]);
 
+    // Must open dialog instead of calling mutate directly
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("ยืนยันการรับทราบการแจ้งเตือน"),
+    ).toBeInTheDocument();
+
+    const confirmBtn = screen.getByRole("button", { name: "ยืนยันรับทราบ" });
+    expect(confirmBtn).toBeDisabled();
+
+    const textarea = screen.getByLabelText(/เหตุผล \/ การดำเนินการที่รับทราบ/);
+    // Whitespace-only must keep confirm disabled
+    await user.type(textarea, "   ");
+    expect(confirmBtn).toBeDisabled();
+
+    await user.clear(textarea);
+    await user.type(textarea, "อยู่ระหว่างดำเนินการส่งเบิกจ่ายแล้ว");
+    expect(confirmBtn).toBeEnabled();
+
+    await user.click(confirmBtn);
+
     expect(mutateMock).toHaveBeenCalledTimes(1);
-    expect(mutateMock).toHaveBeenCalledWith({ id: "notif-1" });
+    expect(mutateMock).toHaveBeenCalledWith({
+      id: "notif-1",
+      data: { reason: "อยู่ระหว่างดำเนินการส่งเบิกจ่ายแล้ว" },
+    });
   });
 
   it("in all-notifications (showAcknowledgeButton=false), only MANUAL_ANOMALY_EDITED has the รับทราบ button", async () => {
@@ -119,7 +145,14 @@ describe("NotificationList Component", () => {
 
     await user.click(ackButtons[0]);
 
+    const textarea = screen.getByLabelText(/เหตุผล \/ การดำเนินการที่รับทราบ/);
+    await user.type(textarea, "รับทราบและตรวจซ้ำแล้ว");
+    await user.click(screen.getByRole("button", { name: "ยืนยันรับทราบ" }));
+
     expect(mutateMock).toHaveBeenCalledTimes(1);
-    expect(mutateMock).toHaveBeenCalledWith({ id: "notif-3" });
+    expect(mutateMock).toHaveBeenCalledWith({
+      id: "notif-3",
+      data: { reason: "รับทราบและตรวจซ้ำแล้ว" },
+    });
   });
 });

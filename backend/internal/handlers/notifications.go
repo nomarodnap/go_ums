@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -111,6 +112,10 @@ func RegisterNotificationRoutes(api huma.API, pool *pgxpool.Pool, lineNotifiers 
 	})
 
 	// Mark read / Acknowledge notification
+	type MarkNotificationReadRequest struct {
+		Reason string `json:"reason" minLength:"1" doc:"สาเหตุหรือหมายเหตุการรับทราบ (บังคับกรอก)"`
+	}
+
 	huma.Register(api, huma.Operation{
 		OperationID: "markNotificationRead",
 		Method:      http.MethodPut,
@@ -121,8 +126,14 @@ func RegisterNotificationRoutes(api huma.API, pool *pgxpool.Pool, lineNotifiers 
 			{"bearerAuth": {}},
 		},
 	}, func(ctx context.Context, input *struct {
-		ID string `path:"id"`
+		ID   string `path:"id"`
+		Body MarkNotificationReadRequest
 	}) (*struct{ Body bool `json:"body"` }, error) {
+		reason := strings.TrimSpace(input.Body.Reason)
+		if reason == "" {
+			return nil, huma.Error422UnprocessableEntity("กรุณาระบุเหตุผลหรือหมายเหตุการรับทราบ")
+		}
+
 		user, _ := auth.UserFromContext(ctx)
 		userName := ""
 		if user != nil {
@@ -132,11 +143,12 @@ func RegisterNotificationRoutes(api huma.API, pool *pgxpool.Pool, lineNotifiers 
 		_, err := pool.Exec(ctx, `
 			UPDATE notifications
 			SET is_read = true,
-			    acknowledged_by = COALESCE(NULLIF($1, ''), acknowledged_by),
+			    acknowledged_reason = $1,
+			    acknowledged_by = COALESCE(NULLIF($2, ''), acknowledged_by),
 			    acknowledged_at = NOW(),
 			    updated_at = NOW()
-			WHERE id = $2
-		`, userName, input.ID)
+			WHERE id = $3
+		`, reason, userName, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to mark notification read: " + err.Error())
 		}
