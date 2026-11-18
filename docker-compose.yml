@@ -82,7 +82,7 @@ services:
       - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
       - JWT_SECRET=${JWT_SECRET}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
-      - APP_URL=${APP_URL:-http://localhost}
+      - APP_URL=${APP_URL:-https://ums.fisheries.go.th}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
