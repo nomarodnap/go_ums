@@ -13,6 +13,7 @@ import {
   User as UserIcon,
   FileText,
   Eye,
+  MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -47,6 +48,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ArchivedBillDetailDialog } from "./archived-bill-detail-dialog";
 import { cn } from "@/lib/utils";
 
@@ -138,9 +148,14 @@ export function ArchivedBillsClient({
 
   const handleConfirmPurge = () => {
     if (!billToPurge) return;
+    const trimmedReason = purgeReason.trim();
+    if (!trimmedReason) {
+      toast.error("กรุณาระบุเหตุผลการลบถาวร");
+      return;
+    }
     const target = billToPurge;
     startTransition(async () => {
-      const res = await permanentlyDeleteArchivedBill(target.id, purgeReason);
+      const res = await permanentlyDeleteArchivedBill(target.id, trimmedReason);
       if (res.success) {
         toast.success(`ลบรายการบิล ${target.billCode} ถาวรเรียบร้อยแล้ว (บันทึก Log แล้ว)`);
         setBillToPurge(null);
@@ -348,12 +363,12 @@ export function ArchivedBillsClient({
                     <TableHead className="text-xs">รอบเดือน/ปี</TableHead>
                     <TableHead className="text-xs text-right">ยอดเงิน (บาท)</TableHead>
                     <TableHead className="text-xs">ผู้ย้าย / เหตุผล</TableHead>
-                    <TableHead className="text-xs text-right">จัดการ</TableHead>
+                    <TableHead className="text-xs text-center">จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredArchived.map((bill) => (
-                    <TableRow key={bill.id}>
+                    <TableRow key={bill.id} className="group">
                       <TableCell className="text-xs font-mono font-semibold whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <FileText className="size-3.5 text-muted-foreground" />
@@ -396,45 +411,57 @@ export function ArchivedBillsClient({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setBillToView(bill)}
-                            className="h-7.5 px-2.5 text-xs rounded-lg cursor-pointer"
-                          >
-                            <Eye className="mr-1 size-3" />
-                            ดูรายละเอียด
-                          </Button>
-                          {canManage && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRestore(bill)}
-                                disabled={isPending}
-                                className="h-7.5 px-2.5 text-xs rounded-lg border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
-                              >
-                                <RotateCcw className="mr-1 size-3" />
-                                กู้คืน
-                              </Button>
+                      <TableCell
+                        className="text-center whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
                               <Button
                                 variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setBillToPurge(bill);
-                                  setPurgeReason("");
-                                }}
-                                disabled={isPending}
-                                className="h-7.5 px-2.5 text-xs rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                                className="h-8 w-8 p-0 cursor-pointer"
+                              />
+                            }
+                          >
+                            <span className="sr-only">เปิดเมนู</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>การจัดการ</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => setBillToView(bill)}
                               >
-                                <Trash2 className="mr-1 size-3" />
-                                ลบถาวร
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                                <Eye className="mr-2 h-4 w-4" /> ดูรายละเอียด
+                              </DropdownMenuItem>
+                              {canManage && (
+                                <>
+                                  <DropdownMenuItem
+                                    className="cursor-pointer text-emerald-700 dark:text-emerald-400 focus:text-emerald-700 dark:focus:text-emerald-400"
+                                    disabled={isPending}
+                                    onClick={() => handleRestore(bill)}
+                                  >
+                                    <RotateCcw className="mr-2 h-4 w-4" /> กู้คืน
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="cursor-pointer text-destructive focus:text-destructive"
+                                    disabled={isPending}
+                                    onClick={() => {
+                                      setBillToPurge(bill);
+                                      setPurgeReason("");
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" /> ลบถาวร
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -551,15 +578,16 @@ export function ArchivedBillsClient({
 
           <div className="space-y-1.5 py-1">
             <Label htmlFor="permanent-delete-reason" className="text-xs font-semibold">
-              เหตุผลการลบถาวร (ไม่บังคับ)
+              เหตุผลการลบถาวร <span className="text-destructive">*</span>
             </Label>
             <Textarea
               id="permanent-delete-reason"
               value={purgeReason}
               onChange={(e) => setPurgeReason(e.target.value)}
-              placeholder="ระบุเหตุผลการลบถาวร เพื่อบันทึกในประวัติตรวจสอบ..."
+              placeholder="กรุณาระบุเหตุผลการลบถาวร เพื่อบันทึกในประวัติตรวจสอบ..."
               rows={2}
               className="text-xs rounded-xl resize-none"
+              required
               disabled={isPending}
             />
           </div>
@@ -571,7 +599,7 @@ export function ArchivedBillsClient({
                 e.preventDefault();
                 handleConfirmPurge();
               }}
-              disabled={isPending}
+              disabled={isPending || !purgeReason.trim()}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               {isPending ? "กำลังลบถาวร..." : "ยืนยันลบถาวร"}

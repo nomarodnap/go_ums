@@ -177,6 +177,11 @@ func archiveBillTx(
 	reason string,
 	searchService *ai.SearchService,
 ) error {
+	trimmedReason := strings.TrimSpace(reason)
+	if trimmedReason == "" {
+		return huma.Error400BadRequest("กรุณาระบุเหตุผลการลบรายการบิล")
+	}
+
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to begin archive transaction")
@@ -608,11 +613,14 @@ func RegisterBillArchiveRoutes(
 		},
 	}, func(ctx context.Context, input *struct {
 		ID     string `path:"id" doc:"Archived bill unique ID"`
-		Reason string `query:"reason" doc:"Optional reason for permanent deletion"`
+		Reason string `query:"reason" doc:"Required reason for permanent deletion"`
 	}) (*struct{ Body bool `json:"body"` }, error) {
 		user, err := auth.RequireRoles(ctx, "admin", "central_staff", "regional_staff")
 		if err != nil {
 			return nil, huma.Error403Forbidden(err.Error())
+		}
+		if strings.TrimSpace(input.Reason) == "" {
+			return nil, huma.Error400BadRequest("กรุณาระบุเหตุผลการลบถาวร")
 		}
 
 		tx, err := pool.Begin(ctx)

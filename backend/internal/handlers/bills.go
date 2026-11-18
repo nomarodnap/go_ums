@@ -520,7 +520,7 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool, searchServices ...*ai.
 		},
 	}, func(ctx context.Context, input *struct {
 		ID     string `path:"id" doc:"Bill unique ID"`
-		Reason string `query:"reason" doc:"Optional reason for moving bill to archive"`
+		Reason string `query:"reason" doc:"Required reason for moving bill to archive"`
 	}) (*struct{ Body bool `json:"body"` }, error) {
 		user, err := auth.RequireRoles(ctx, "admin", "central_staff", "regional_staff")
 		if err != nil {

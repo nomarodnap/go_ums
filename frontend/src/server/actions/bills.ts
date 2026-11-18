@@ -693,10 +693,15 @@ export interface BillDeletionLogItem {
 
 export async function deleteBill(billId: string, reason?: string) {
   try {
+    const trimmedReason = reason?.trim() || "";
+    if (!trimmedReason) {
+      return {
+        success: false,
+        error: "กรุณาระบุเหตุผลการลบรายการบิล",
+      };
+    }
     const reqHeaders = await getAuthHeaders();
-    const qs = reason?.trim()
-      ? `?reason=${encodeURIComponent(reason.trim())}`
-      : "";
+    const qs = `?reason=${encodeURIComponent(trimmedReason)}`;
     const res = await fetch(`${BACKEND_URL}/api/bills/${billId}${qs}`, {
       method: "DELETE",
       headers: reqHeaders,
@@ -800,10 +805,15 @@ export async function permanentlyDeleteArchivedBill(
   reason?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const trimmedReason = reason?.trim() || "";
+    if (!trimmedReason) {
+      return {
+        success: false,
+        error: "กรุณาระบุเหตุผลการลบถาวร",
+      };
+    }
     const reqHeaders = await getAuthHeaders();
-    const qs = reason?.trim()
-      ? `?reason=${encodeURIComponent(reason.trim())}`
-      : "";
+    const qs = `?reason=${encodeURIComponent(trimmedReason)}`;
     const res = await fetch(
       `${BACKEND_URL}/api/bills/archived/${billId}${qs}`,
       {

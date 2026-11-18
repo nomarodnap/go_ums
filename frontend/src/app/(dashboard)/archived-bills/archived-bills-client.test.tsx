@@ -125,7 +125,8 @@ describe("ArchivedBillsClient", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "กู้คืน" }));
+    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
+    await user.click(await screen.findByRole("menuitem", { name: "กู้คืน" }));
 
     await waitFor(() => {
       expect(restoreMock).toHaveBeenCalledWith("bill-arch-1");
@@ -147,7 +148,8 @@ describe("ArchivedBillsClient", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "กู้คืน" }));
+    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
+    await user.click(await screen.findByRole("menuitem", { name: "กู้คืน" }));
 
     await waitFor(() => {
       expect(restoreMock).toHaveBeenCalledWith("bill-arch-1");
@@ -168,14 +170,19 @@ describe("ArchivedBillsClient", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "ลบถาวร" }));
+    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
+    await user.click(await screen.findByRole("menuitem", { name: "ลบถาวร" }));
     expect(
       screen.getByText("ยืนยันการลบรายการบิลถาวร?"),
     ).toBeInTheDocument();
 
+    const confirmBtn = screen.getByRole("button", { name: "ยืนยันลบถาวร" });
+    expect(confirmBtn).toBeDisabled();
+
     const reasonInput = screen.getByLabelText(/เหตุผลการลบถาวร/);
     await user.type(reasonInput, "ยืนยันลบบิลทดสอบ");
-    await user.click(screen.getByRole("button", { name: "ยืนยันลบถาวร" }));
+    expect(confirmBtn).toBeEnabled();
+    await user.click(confirmBtn);
 
     await waitFor(() => {
       expect(purgeMock).toHaveBeenCalledWith(
@@ -202,15 +209,19 @@ describe("ArchivedBillsClient", () => {
       />,
     );
 
-    // View-only user should not see Restore / Permanent Delete buttons, but CAN view details
+    await user.click(screen.getByRole("button", { name: "เปิดเมนู" }));
+
+    // View-only user should not see Restore / Permanent Delete menu items, but CAN view details
     expect(
-      screen.queryByRole("button", { name: "กู้คืน" }),
+      screen.queryByRole("menuitem", { name: "กู้คืน" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "ลบถาวร" }),
+      screen.queryByRole("menuitem", { name: "ลบถาวร" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "ดูรายละเอียด" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "ดูรายละเอียด" }),
+    );
 
     expect(
       screen.getByText("รายละเอียดรายการค่าใช้จ่าย"),

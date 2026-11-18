@@ -588,8 +588,12 @@ export function TrackingDashboard({
 
   const handleDeleteBill = () => {
     if (!billToDelete) return;
+    if (!deleteReason.trim()) {
+      toast.error("กรุณาระบุเหตุผลการลบรายการบิล");
+      return;
+    }
     startTransition(async () => {
-      const res = await deleteBill(billToDelete, deleteReason);
+      const res = await deleteBill(billToDelete, deleteReason.trim());
       if (res.success) {
         toast.success("ย้ายรายการบิลไปยังหน้า บิลที่เก็บถาวร (Archived) เรียบร้อยแล้ว");
         setBillToDelete(null);
@@ -2246,14 +2250,15 @@ export function TrackingDashboard({
               htmlFor="tracking-archive-reason"
               className="text-xs font-medium text-foreground"
             >
-              เหตุผลการลบ (ไม่บังคับ)
+              เหตุผลการลบ <span className="text-destructive">*</span>
             </label>
             <Input
               id="tracking-archive-reason"
               value={deleteReason}
               onChange={(e) => setDeleteReason(e.target.value)}
-              placeholder="เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
+              placeholder="กรุณาระบุเหตุผลการลบ เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
               className="text-xs"
+              required
               disabled={isPending}
             />
           </div>
@@ -2264,7 +2269,7 @@ export function TrackingDashboard({
                 e.preventDefault();
                 handleDeleteBill();
               }}
-              disabled={isPending}
+              disabled={isPending || !deleteReason.trim()}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground cursor-pointer"
             >
               {isPending ? "กำลังย้าย..." : "ย้ายไปเก็บถาวร"}

@@ -484,16 +484,20 @@ export function BillsTable({
 
   const handleDelete = () => {
     if (!billToDelete) return;
+    if (!deleteReason.trim()) {
+      toast.error("กรุณาระบุเหตุผลการลบรายการบิล");
+      return;
+    }
     startTransition(async () => {
-      const result = await deleteBill(billToDelete, deleteReason);
+      const result = await deleteBill(billToDelete, deleteReason.trim());
       if (result.success) {
         toast.success("ย้ายรายการบิลไปยังหน้า บิลที่เก็บถาวร (Archived) เรียบร้อยแล้ว");
+        setBillToDelete(null);
+        setDeleteReason("");
         router.refresh();
       } else {
         toast.error(result.error || "ไม่สามารถย้ายรายการไปเก็บถาวรได้");
       }
-      setBillToDelete(null);
-      setDeleteReason("");
     });
   };
 
@@ -1545,14 +1549,15 @@ export function BillsTable({
               htmlFor="bill-archive-reason"
               className="text-xs font-medium text-foreground"
             >
-              เหตุผลการลบ (ไม่บังคับ)
+              เหตุผลการลบ <span className="text-destructive">*</span>
             </label>
             <Input
               id="bill-archive-reason"
               value={deleteReason}
               onChange={(e) => setDeleteReason(e.target.value)}
-              placeholder="เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
+              placeholder="กรุณาระบุเหตุผลการลบ เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
               className="text-xs"
+              required
               disabled={isPending}
             />
           </div>
@@ -1563,7 +1568,7 @@ export function BillsTable({
                 e.preventDefault();
                 handleDelete();
               }}
-              disabled={isPending}
+              disabled={isPending || !deleteReason.trim()}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               {isPending ? "กำลังย้าย..." : "ย้ายไปเก็บถาวร"}

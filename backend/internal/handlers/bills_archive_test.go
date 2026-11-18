@@ -1,8 +1,13 @@
 package handlers
 
 import (
+	"context"
+	"net/http"
 	"reflect"
 	"testing"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/dof/ums-backend/internal/auth"
 )
 
 func TestParseServiceNumbers(t *testing.T) {
@@ -69,5 +74,26 @@ func TestFindOverlappingServiceNumber(t *testing.T) {
 				t.Fatalf("got (%q, %v), want (%q, %v)", sn, hit, tc.wantSN, tc.wantHit)
 			}
 		})
+	}
+}
+
+func TestArchiveBillTxRequiresReason(t *testing.T) {
+	err := archiveBillTx(
+		context.Background(),
+		nil,
+		&auth.Claims{UserID: "u-1", Role: "admin"},
+		"bill-1",
+		"   ",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected 400 error when archive reason is empty, got nil")
+	}
+	statusErr, ok := err.(huma.StatusError)
+	if !ok {
+		t.Fatalf("expected huma.StatusError, got %T (%v)", err, err)
+	}
+	if statusErr.GetStatus() != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", statusErr.GetStatus())
 	}
 }
