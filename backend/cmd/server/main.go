@@ -145,6 +145,7 @@ func main() {
 	// 4. Register Domain Handlers
 	handlers.RegisterAuthRoutes(api, pool, cfg, emailService, taskDistributor)
 	handlers.RegisterDepartmentRoutes(api, pool)
+	handlers.RegisterBillArchiveRoutes(api, pool, storageService, aiSearchService)
 	handlers.RegisterBillRoutes(api, pool, aiSearchService)
 	handlers.RegisterAuditRoutes(api, pool, lineNotifier)
 	handlers.RegisterBudgetRoutes(api, pool)

@@ -371,6 +371,7 @@ export function BillsTable({
 
   const [isPending, startTransition] = useTransition();
   const [billToDelete, setBillToDelete] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [billToView, setBillToView] = useState<any>(null);
   const [billLogs, setBillLogs] = useState<any[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -484,13 +485,15 @@ export function BillsTable({
   const handleDelete = () => {
     if (!billToDelete) return;
     startTransition(async () => {
-      const result = await deleteBill(billToDelete);
+      const result = await deleteBill(billToDelete, deleteReason);
       if (result.success) {
-        toast.success("ลบรายการบิลเรียบร้อยแล้ว");
+        toast.success("ย้ายรายการบิลไปยังหน้า บิลที่เก็บถาวร (Archived) เรียบร้อยแล้ว");
+        router.refresh();
       } else {
-        toast.error(result.error || "ไม่สามารถลบรายการได้");
+        toast.error(result.error || "ไม่สามารถย้ายรายการไปเก็บถาวรได้");
       }
       setBillToDelete(null);
+      setDeleteReason("");
     });
   };
 
@@ -1522,16 +1525,37 @@ export function BillsTable({
 
       <AlertDialog
         open={!!billToDelete}
-        onOpenChange={(open) => !open && setBillToDelete(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBillToDelete(null);
+            setDeleteReason("");
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบรายการ?</AlertDialogTitle>
+            <AlertDialogTitle>ย้ายรายการบิลไปเก็บถาวร (Archived)?</AlertDialogTitle>
             <AlertDialogDescription>
-              การดำเนินการนี้ไม่สามารถเรียกคืนได้
-              ข้อมูลบิลและไฟล์แนบที่เกี่ยวข้องจะถูกลบออกจากระบบอย่างถาวร
+              รายการบิลนี้จะถูกย้ายไปยังหน้า &quot;บิลที่เก็บถาวร (Archived)&quot; ก่อน
+              พร้อมบันทึกประวัติการลบ โดยคุณสามารถกู้คืนหรือกดลบถาวรได้จากหน้านั้น
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5 py-1">
+            <label
+              htmlFor="bill-archive-reason"
+              className="text-xs font-medium text-foreground"
+            >
+              เหตุผลการลบ (ไม่บังคับ)
+            </label>
+            <Input
+              id="bill-archive-reason"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
+              className="text-xs"
+              disabled={isPending}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isPending}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
@@ -1542,7 +1566,7 @@ export function BillsTable({
               disabled={isPending}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
-              {isPending ? "กำลังลบ..." : "ลบรายการ"}
+              {isPending ? "กำลังย้าย..." : "ย้ายไปเก็บถาวร"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

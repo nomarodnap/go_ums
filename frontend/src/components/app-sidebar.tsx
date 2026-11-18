@@ -16,6 +16,7 @@ import {
   Gauge,
   MessageSquare,
   Sparkles,
+  Archive,
 } from "lucide-react";
 
 import {
@@ -96,6 +97,11 @@ const navMain = [
     url: "/all-bills",
     icon: FileText,
     staffOnly: true,
+  },
+  {
+    title: "บิลที่เก็บถาวร (Archived)",
+    url: "/archived-bills",
+    icon: Archive,
   },
   {
     title: "รหัสเครื่องวัด / หมายเลขผู้ใช้",

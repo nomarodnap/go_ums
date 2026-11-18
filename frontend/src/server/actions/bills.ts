@@ -648,24 +648,211 @@ export async function getLatestEstimatedAmount(
   }
 }
 
-export async function deleteBill(billId: string) {
+export interface ArchivedBillItem {
+  id: string;
+  billCode: string;
+  departmentId: string;
+  departmentName?: string;
+  depositUnitId?: string;
+  utilityType: string;
+  billingMonth: number;
+  billingYear: number;
+  provider?: string;
+  serviceNumber?: string;
+  invoiceNumber?: string;
+  invoiceAmount: number;
+  paymentStatus: string;
+  archivedBy: string;
+  archivedByName?: string;
+  archiveReason?: string;
+  archivedAt: string;
+}
+
+export interface BillDeletionLogItem {
+  id: string;
+  billId: string;
+  billCode: string;
+  departmentId?: string;
+  departmentName?: string;
+  utilityType?: string;
+  serviceNumber?: string;
+  billingMonth?: number;
+  billingYear?: number;
+  invoiceAmount?: number;
+  action: "ARCHIVED" | "RESTORED" | "PERMANENTLY_DELETED" | string;
+  reason?: string;
+  performedBy: string;
+  performedByName?: string;
+  createdAt: string;
+}
+
+export async function deleteBill(billId: string, reason?: string) {
   try {
     const reqHeaders = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/bills/${billId}`, {
+    const qs = reason?.trim()
+      ? `?reason=${encodeURIComponent(reason.trim())}`
+      : "";
+    const res = await fetch(`${BACKEND_URL}/api/bills/${billId}${qs}`, {
       method: "DELETE",
       headers: reqHeaders,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      return { success: false, error: err.detail || err.title || "ไม่สามารถลบรายการได้" };
+      return {
+        success: false,
+        error: err.detail || err.title || "ไม่สามารถย้ายรายการไปเก็บถาวรได้",
+      };
     }
     revalidatePath("/bills");
     revalidatePath("/all-bills");
+    revalidatePath("/archived-bills");
+    revalidatePath("/bill-tracking");
     return { success: true };
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการลบ",
+    };
+  }
+}
+
+export async function getArchivedBills(params?: {
+  search?: string;
+  utilityType?: string;
+}): Promise<{ success: boolean; data: ArchivedBillItem[]; error?: string }> {
+  try {
+    const reqHeaders = await getAuthHeaders();
+    const sp = new URLSearchParams();
+    if (params?.search) sp.set("search", params.search);
+    if (params?.utilityType && params.utilityType !== "ALL") {
+      sp.set("utilityType", params.utilityType);
+    }
+    const qs = sp.toString() ? `?${sp.toString()}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/bills/archived${qs}`, {
+      headers: reqHeaders,
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        data: [],
+        error: err.detail || err.title || "ไม่สามารถดึงรายการบิลที่เก็บถาวรได้",
+      };
+    }
+    const data = (await res.json()) as ArchivedBillItem[];
+    return { success: true, data: Array.isArray(data) ? data : [] };
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      error:
+        error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการโหลดข้อมูล",
+    };
+  }
+}
+
+export async function restoreArchivedBill(billId: string): Promise<{
+  success: boolean;
+  billCode?: string;
+  error?: string;
+}> {
+  try {
+    const reqHeaders = await getAuthHeaders();
+    const res = await fetch(
+      `${BACKEND_URL}/api/bills/archived/${billId}/restore`,
+      {
+        method: "POST",
+        headers: reqHeaders,
+      },
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error:
+          err.detail ||
+          err.title ||
+          "ไม่สามารถกู้คืนรายการบิลได้ (อาจมีบิลซ้ำซ้อนในระบบปัจจุบัน)",
+      };
+    }
+    const body = (await res.json().catch(() => ({}))) as { billCode?: string };
+    revalidatePath("/bills");
+    revalidatePath("/all-bills");
+    revalidatePath("/archived-bills");
+    revalidatePath("/bill-tracking");
+    return { success: true, billCode: body.billCode };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการกู้คืน",
+    };
+  }
+}
+
+export async function permanentlyDeleteArchivedBill(
+  billId: string,
+  reason?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const reqHeaders = await getAuthHeaders();
+    const qs = reason?.trim()
+      ? `?reason=${encodeURIComponent(reason.trim())}`
+      : "";
+    const res = await fetch(
+      `${BACKEND_URL}/api/bills/archived/${billId}${qs}`,
+      {
+        method: "DELETE",
+        headers: reqHeaders,
+      },
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: err.detail || err.title || "ไม่สามารถลบรายการถาวรได้",
+      };
+    }
+    revalidatePath("/archived-bills");
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการลบถาวร",
+    };
+  }
+}
+
+export async function getBillDeletionLogs(params?: {
+  action?: string;
+  search?: string;
+}): Promise<{ success: boolean; data: BillDeletionLogItem[]; error?: string }> {
+  try {
+    const reqHeaders = await getAuthHeaders();
+    const sp = new URLSearchParams();
+    if (params?.action && params.action !== "ALL") sp.set("action", params.action);
+    if (params?.search) sp.set("search", params.search);
+    const qs = sp.toString() ? `?${sp.toString()}` : "";
+    const res = await fetch(`${BACKEND_URL}/api/bills/deletion-logs${qs}`, {
+      headers: reqHeaders,
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        data: [],
+        error: err.detail || err.title || "ไม่สามารถโหลดประวัติการลบได้",
+      };
+    }
+    const data = (await res.json()) as BillDeletionLogItem[];
+    return { success: true, data: Array.isArray(data) ? data : [] };
+  } catch (error) {
+    return {
+      success: false,
+      data: [],
+      error:
+        error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการโหลดประวัติ",
     };
   }
 }

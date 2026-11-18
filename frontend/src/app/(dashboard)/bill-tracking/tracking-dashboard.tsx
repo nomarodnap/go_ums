@@ -384,6 +384,7 @@ export function TrackingDashboard({
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isLoadingBill, setIsLoadingBill] = useState(false);
   const [billToDelete, setBillToDelete] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [billToFlag, setBillToFlag] = useState<any | null>(null);
   const [flagReason, setFlagReason] = useState("");
   const [flagDetail, setFlagDetail] = useState("");
@@ -588,16 +589,17 @@ export function TrackingDashboard({
   const handleDeleteBill = () => {
     if (!billToDelete) return;
     startTransition(async () => {
-      const res = await deleteBill(billToDelete);
+      const res = await deleteBill(billToDelete, deleteReason);
       if (res.success) {
-        toast.success("ลบรายการบิลเรียบร้อยแล้ว");
+        toast.success("ย้ายรายการบิลไปยังหน้า บิลที่เก็บถาวร (Archived) เรียบร้อยแล้ว");
         setBillToDelete(null);
+        setDeleteReason("");
         queryClient.invalidateQueries({
           queryKey: getGetBillTrackingQueryKey({ month, year }),
         });
         router.refresh();
       } else {
-        toast.error(res.error || "ไม่สามารถลบรายการได้");
+        toast.error(res.error || "ไม่สามารถย้ายรายการไปเก็บถาวรได้");
       }
     });
   };
@@ -2224,15 +2226,37 @@ export function TrackingDashboard({
       {/* Delete Confirmation Alert Dialog */}
       <AlertDialog
         open={!!billToDelete}
-        onOpenChange={(open) => !open && setBillToDelete(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBillToDelete(null);
+            setDeleteReason("");
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบรายการบิล</AlertDialogTitle>
+            <AlertDialogTitle>ย้ายรายการบิลไปเก็บถาวร (Archived)?</AlertDialogTitle>
             <AlertDialogDescription>
-              คุณแน่ใจหรือไม่ว่าต้องการลบรายการบิลนี้ การกระทำนี้ไม่สามารถย้อนกลับได้
+              รายการบิลนี้จะถูกย้ายไปยังหน้า &quot;บิลที่เก็บถาวร (Archived)&quot; ก่อน
+              พร้อมบันทึกประวัติการลบ โดยสามารถกู้คืนหรือกดลบถาวรได้จากหน้านั้น
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-1.5 py-1">
+            <label
+              htmlFor="tracking-archive-reason"
+              className="text-xs font-medium text-foreground"
+            >
+              เหตุผลการลบ (ไม่บังคับ)
+            </label>
+            <Input
+              id="tracking-archive-reason"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="เช่น บันทึกข้อมูลผิดเดือน / บันทึกซ้ำ..."
+              className="text-xs"
+              disabled={isPending}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isPending}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
@@ -2243,7 +2267,7 @@ export function TrackingDashboard({
               disabled={isPending}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground cursor-pointer"
             >
-              {isPending ? "กำลังลบ..." : "ลบรายการ"}
+              {isPending ? "กำลังย้าย..." : "ย้ายไปเก็บถาวร"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

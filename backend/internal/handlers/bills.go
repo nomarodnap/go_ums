@@ -429,7 +429,15 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool, searchServices ...*ai.
 		// 2. Generate Bill Code
 		prefix := service.GenerateBillPrefix(costCenterCode, input.Body.BillingYear, input.Body.BillingMonth, input.Body.UtilityType)
 		var latestCode string
-		_ = pool.QueryRow(ctx, "SELECT bill_code FROM utility_bills WHERE bill_code LIKE $1 ORDER BY bill_code DESC LIMIT 1", prefix+"%").Scan(&latestCode)
+		_ = pool.QueryRow(ctx, `
+			SELECT bill_code FROM (
+				SELECT bill_code FROM utility_bills WHERE bill_code LIKE $1
+				UNION ALL
+				SELECT bill_code FROM archived_utility_bills WHERE bill_code LIKE $1
+			) combined
+			ORDER BY bill_code DESC
+			LIMIT 1
+		`, prefix+"%").Scan(&latestCode)
 		billCode := service.GenerateNextBillCode(prefix, latestCode)
 
 		// 3. Insert Bill
@@ -500,32 +508,26 @@ func RegisterBillRoutes(api huma.API, pool *pgxpool.Pool, searchServices ...*ai.
 		}, nil
 	})
 
-	// Delete Bill
+	// Delete Bill (Soft-Delete: Move to Archived Bills + Log)
 	huma.Register(api, huma.Operation{
 		OperationID: "deleteBill",
 		Method:      http.MethodDelete,
 		Path:        "/api/bills/{id}",
-		Summary:     "Delete a utility bill",
+		Summary:     "Move a utility bill to archived bills (soft-delete with audit log)",
 		Tags:        []string{"Bills"},
 		Security: []map[string][]string{
 			{"bearerAuth": {}},
 		},
 	}, func(ctx context.Context, input *struct {
-		ID string `path:"id" doc:"Bill unique ID"`
+		ID     string `path:"id" doc:"Bill unique ID"`
+		Reason string `query:"reason" doc:"Optional reason for moving bill to archive"`
 	}) (*struct{ Body bool `json:"body"` }, error) {
-		if _, err := auth.RequireRoles(ctx, "admin", "central_staff", "regional_staff"); err != nil {
+		user, err := auth.RequireRoles(ctx, "admin", "central_staff", "regional_staff")
+		if err != nil {
 			return nil, huma.Error403Forbidden(err.Error())
 		}
-		_, err := pool.Exec(ctx, "DELETE FROM utility_bills WHERE id = $1", input.ID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to delete bill")
-		}
-		if searchService != nil {
-			go func(id string) {
-				bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				_ = searchService.DeleteBillEmbedding(bgCtx, id)
-			}(input.ID)
+		if err := archiveBillTx(ctx, pool, user, input.ID, input.Reason, searchService); err != nil {
+			return nil, err
 		}
 		return &struct{ Body bool `json:"body"` }{Body: true}, nil
 	})

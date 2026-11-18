@@ -103,6 +103,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         title: "ติดตามความคืบหน้า",
         description: "ติดตามสถานะการส่งเอกสารและการเบิกจ่ายบิล",
       },
+      {
+        id: "/archived-bills",
+        title: "บิลที่เก็บถาวร (Archived)",
+        description: "ดูรายการบิลที่ถูกย้ายมาเก็บถาวร กู้คืน ลบถาวร และตรวจสอบประวัติการลบ",
+      },
     ],
   },
   {
@@ -205,6 +210,16 @@ export function hasPageAccess(
   if (
     path === "/all-ai" &&
     ["admin", "central_staff", "auditor", "strategy_finance"].includes(user.role || "")
+  ) {
+    return true;
+  }
+
+  // Fallback for /archived-bills: staff roles with bill archive/audit access
+  if (
+    path === "/archived-bills" &&
+    ["admin", "central_staff", "regional_staff", "auditor", "strategy_finance"].includes(
+      user.role || "",
+    )
   ) {
     return true;
   }
