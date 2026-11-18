@@ -225,7 +225,7 @@ export const TaraAvatar = React.memo(function TaraAvatar({
             onClick={handleToggleLive2D}
             title={
               isLive2DActive
-                ? "คลิกเพื่อปิด 2D Live (ซ่อนแผง Live 2D และใช้งานแชทเต็มหน้าจอ)"
+                ? "คลิกเพื่อปิด 2D Live (แสดงภาพนิ่งน้องธาร่า ประหยัดทรัพยากร)"
                 : "คลิกเพื่อเปิด 2D Live (แอนิเมชันขยับตามเมาส์)"
             }
             className={cn(
@@ -321,8 +321,8 @@ export const TaraAvatar = React.memo(function TaraAvatar({
             {/* Fallback image and static portrait mode */}
             <div
               className={cn(
-                "relative size-full scale-[1.08] transition-opacity duration-500",
-                isLive2DActive && live2DLoaded ? "opacity-0 pointer-events-none absolute" : "opacity-100"
+                "absolute inset-0 size-full scale-[1.08] transition-opacity duration-500",
+                isLive2DActive && live2DLoaded ? "opacity-0 pointer-events-none" : "opacity-100"
               )}
             >
               <Image

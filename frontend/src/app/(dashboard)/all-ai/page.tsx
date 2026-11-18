@@ -211,13 +211,17 @@ export default function AllAIAssistantPage() {
   const [emotion, setEmotion] = useState<TaraEmotion>("idle");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [live2DEnabled, setLive2DEnabled] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("tara_live2d_enabled") !== "false";
-    }
-    return true;
-  });
+  const [live2DEnabled, setLive2DEnabled] = useState(true);
   const [isTheaterMode, setIsTheaterMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("tara_live2d_enabled");
+      if (saved === "false") {
+        setLive2DEnabled(false);
+      }
+    }
+  }, []);
   const [isListeningMic, setIsListeningMic] = useState(false);
   const [latestSubtitle, setLatestSubtitle] = useState<string>(
     "สวัสดีค่ะผู้บริหารและเจ้าหน้าที่ส่วนกลาง น้องธาร่าพร้อมรายงานและวิเคราะห์ข้อมูล 292 หน่วยงานแล้วค่ะ"
@@ -259,10 +263,9 @@ export default function AllAIAssistantPage() {
         localStorage.setItem("tara_live2d_enabled", String(next));
       }
       if (next) {
-        toast.info("เปิดใช้งาน Live 2D น้องธาร่าแล้ว");
+        toast.info("เปิดใช้งาน 2D Live น้องธาร่า (ขยับตามเมาส์และแสดงสีหน้า)");
       } else {
-        setIsTheaterMode(false);
-        toast.info("ปิดแผง Live 2D แล้ว (ขยายพื้นที่แชทเต็มหน้าจอ)");
+        toast.info("ปิดใช้งาน 2D Live แล้ว (แสดงภาพนิ่งน้องธาร่า ประหยัดทรัพยากร)");
       }
       return next;
     });
@@ -599,21 +602,19 @@ export default function AllAIAssistantPage() {
               <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-xs font-medium">
                 สิทธิ์ส่วนกลาง
               </Badge>
-              {live2DEnabled && (
-                <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                  Face Call Interactive
-                </Badge>
-              )}
+              <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                Face Call Interactive
+              </Badge>
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground truncate mt-0.5">
-              สนทนากับ &quot;น้องธาร่า&quot; AI ผู้เชี่ยวชาญด้านงบประมาณและสาธารณูปโภค 292 หน่วยงาน กรมประมง
+              สนทนาแบบ Face Call กับ &quot;น้องธาร่า&quot; AI ผู้เชี่ยวชาญด้านงบประมาณและสาธารณูปโภค 292 หน่วยงาน กรมประมง
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Call Timer pill */}
-          {live2DEnabled && <CallDurationBadge />}
+          <CallDurationBadge />
 
           {/* Toggle Live2D on/off */}
           <Button
@@ -623,8 +624,8 @@ export default function AllAIAssistantPage() {
             onClick={handleToggleLive2D}
             title={
               live2DEnabled
-                ? "คลิกเพื่อปิดแผง Live 2D และใช้งานแชทเต็มหน้าจอ"
-                : "คลิกเพื่อเปิดแผง Live 2D น้องธาร่า"
+                ? "คลิกเพื่อปิด 2D Live (แสดงภาพนิ่งน้องธาร่า)"
+                : "คลิกเพื่อเปิด 2D Live (แอนิเมชัน 2 มิติ)"
             }
             className={cn(
               "gap-1.5 text-xs rounded-xl transition-all cursor-pointer",
@@ -637,20 +638,18 @@ export default function AllAIAssistantPage() {
             <span>{live2DEnabled ? "2D Live: เปิด" : "2D Live: ปิด"}</span>
           </Button>
 
-          {/* Toggle Theater vs Split View (only when Live 2D is open) */}
-          {live2DEnabled && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsTheaterMode((prev) => !prev)}
-              title={isTheaterMode ? "ย่อหน้าจอเป็นโหมดแยกข้อมูล" : "ขยายเป็นโหมดเต็มจอภาพยนตร์"}
-              className="gap-1.5 text-xs rounded-xl cursor-pointer"
-            >
-              {isTheaterMode ? <Shrink className="size-3.5" /> : <Expand className="size-3.5" />}
-              <span className="hidden sm:inline">{isTheaterMode ? "โหมดแยกหน้าต่าง" : "โหมดเต็มจอ"}</span>
-            </Button>
-          )}
+          {/* Toggle Theater vs Split View */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsTheaterMode((prev) => !prev)}
+            title={isTheaterMode ? "ย่อหน้าจอเป็นโหมดแยกข้อมูล" : "ขยายเป็นโหมดเต็มจอภาพยนตร์"}
+            className="gap-1.5 text-xs rounded-xl cursor-pointer"
+          >
+            {isTheaterMode ? <Shrink className="size-3.5" /> : <Expand className="size-3.5" />}
+            <span className="hidden sm:inline">{isTheaterMode ? "โหมดแยกหน้าต่าง" : "โหมดเต็มจอ"}</span>
+          </Button>
 
           {messages.length > 0 && (
             <Button
@@ -671,104 +670,98 @@ export default function AllAIAssistantPage() {
       <div
         className={cn(
           "grid flex-1 gap-4 min-h-0 transition-all duration-300",
-          !live2DEnabled || isTheaterMode
+          isTheaterMode
             ? "grid-cols-1"
             : "grid-cols-1 lg:grid-cols-12"
         )}
       >
         {/* Left Column: Face Call Video Screen with น้องธาร่า (Tara Avatar) */}
-        {live2DEnabled && (
-          <div
-            className={cn(
-              "flex flex-col gap-3 min-h-0",
-              isTheaterMode ? "col-span-1 h-full" : "lg:col-span-5 xl:col-span-5"
-            )}
-          >
-            <TaraAvatar
-              emotion={emotion}
-              isSpeaking={isSpeaking}
-              isListening={isListeningMic || input.trim().length > 0}
-              isThinking={chatMutation.isPending}
-              voiceEnabled={voiceEnabled}
-              onToggleVoice={handleToggleVoice}
-              live2DEnabled={live2DEnabled}
-              onToggleLive2D={handleToggleLive2D}
-              subtitleText={latestSubtitle}
-              className="w-full flex-1 min-h-[380px] lg:min-h-[440px]"
-            />
+        <div
+          className={cn(
+            "flex flex-col gap-3 min-h-0",
+            isTheaterMode ? "col-span-1 h-full" : "lg:col-span-5 xl:col-span-5"
+          )}
+        >
+          <TaraAvatar
+            emotion={emotion}
+            isSpeaking={isSpeaking}
+            isListening={isListeningMic || input.trim().length > 0}
+            isThinking={chatMutation.isPending}
+            voiceEnabled={voiceEnabled}
+            onToggleVoice={handleToggleVoice}
+            live2DEnabled={live2DEnabled}
+            onToggleLive2D={handleToggleLive2D}
+            subtitleText={latestSubtitle}
+            className="w-full flex-1 min-h-[380px] lg:min-h-[440px]"
+          />
 
-            {/* Interactive Emotion Tester & Call Controls Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl border border-border/80 bg-white dark:bg-card text-xs shadow-xs">
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground mr-1">
-                <span>ทดสอบอารมณ์:</span>
-              </div>
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmotion("happy");
-                    setIsSpeaking(true);
-                    speakThai("ยินดีที่ได้ดูแลและร่วมวางแผนงบประมาณกับเจ้าหน้าที่ทุกท่านค่ะ");
-                  }}
-                  className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-medium transition-colors cursor-pointer"
-                >
-                  😊 ยิ้มแย้ม
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmotion("thinking");
-                    setLatestSubtitle("กำลังค้นหาและประมวลผลข้อมูล 292 หน่วยงาน...");
-                  }}
-                  className="px-2 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-[11px] font-medium transition-colors cursor-pointer"
-                >
-                  🤔 ครุ่นคิด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmotion("listening");
-                    setLatestSubtitle("กำลังรับฟังคำถามของท่านอย่างตั้งใจค่ะ...");
-                  }}
-                  className="px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[11px] font-medium transition-colors cursor-pointer"
-                >
-                  👂 รับฟัง
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmotion("alert");
-                    setIsSpeaking(true);
-                    speakThai("ตรวจพบข้อสังเกต มีบิลที่เกินเกณฑ์เฉลี่ยผิดปกติในระบบค่ะ");
-                  }}
-                  className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[11px] font-medium transition-colors cursor-pointer"
-                >
-                  ⚠️ ข้อสังเกต
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopSpeaking();
-                    setEmotion("idle");
-                  }}
-                  className="px-2 py-1 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border/60 text-[11px] transition-colors cursor-pointer"
-                >
-                  🔄 รีเซ็ต
-                </button>
-              </div>
+          {/* Interactive Emotion Tester & Call Controls Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-2xl border border-border/80 bg-white dark:bg-card text-xs shadow-xs">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground mr-1">
+              <span>ทดสอบอารมณ์:</span>
+            </div>
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmotion("happy");
+                  setIsSpeaking(true);
+                  speakThai("ยินดีที่ได้ดูแลและร่วมวางแผนงบประมาณกับเจ้าหน้าที่ทุกท่านค่ะ");
+                }}
+                className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                😊 ยิ้มแย้ม
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmotion("thinking");
+                  setLatestSubtitle("กำลังค้นหาและประมวลผลข้อมูล 292 หน่วยงาน...");
+                }}
+                className="px-2 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                🤔 ครุ่นคิด
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmotion("listening");
+                  setLatestSubtitle("กำลังรับฟังคำถามของท่านอย่างตั้งใจค่ะ...");
+                }}
+                className="px-2 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                👂 รับฟัง
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmotion("alert");
+                  setIsSpeaking(true);
+                  speakThai("ตรวจพบข้อสังเกต มีบิลที่เกินเกณฑ์เฉลี่ยผิดปกติในระบบค่ะ");
+                }}
+                className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                ⚠️ ข้อสังเกต
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  stopSpeaking();
+                  setEmotion("idle");
+                }}
+                className="px-2 py-1 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border/60 text-[11px] transition-colors cursor-pointer"
+              >
+                🔄 รีเซ็ต
+              </button>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Right Column: Interactive Transcript, Featured Prompts & Analysis Workspace */}
         <Card
           className={cn(
             "flex flex-col overflow-hidden border-border/80 bg-white dark:bg-card shadow-md min-h-0",
-            !live2DEnabled
-              ? "col-span-1"
-              : isTheaterMode
-                ? "hidden"
-                : "lg:col-span-7 xl:col-span-7"
+            isTheaterMode ? "hidden" : "lg:col-span-7 xl:col-span-7"
           )}
         >
           {/* Messages Scroll Area */}

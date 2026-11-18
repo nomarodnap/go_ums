@@ -98,22 +98,26 @@ describe("AllAIAssistantPage", () => {
     expect(screen.getByRole("button", { name: /2D Live: เปิด/ })).toBeInTheDocument();
   });
 
-  it("toggles 2D Live panel off and on when clicking the header toggle button", async () => {
+  it("switches Live 2D model to static portrait while keeping Face Call interface when toggled off", async () => {
     const user = userEvent.setup();
     render(<AllAIAssistantPage />);
 
     expect(screen.getByText("FACE CALL LIVE")).toBeInTheDocument();
+    expect(screen.getByText("Live2D ขยับตามเมาส์")).toBeInTheDocument();
 
     const live2dBtn = screen.getByRole("button", { name: /2D Live: เปิด/ });
     await user.click(live2dBtn);
 
     expect(screen.getByRole("button", { name: /2D Live: ปิด/ })).toBeInTheDocument();
-    expect(screen.queryByText("FACE CALL LIVE")).not.toBeInTheDocument();
+    // Face Call interface remains visible with static portrait image
+    expect(screen.getByText("FACE CALL LIVE")).toBeInTheDocument();
+    expect(screen.getByText("2D Live ปิดอยู่ (ภาพนิ่ง)")).toBeInTheDocument();
+    expect(screen.getByAltText(/น้องธาร่า/)).toBeInTheDocument();
 
-    // Turning back on restores the Live 2D panel
+    // Turning back on restores Live 2D active state
     await user.click(screen.getByRole("button", { name: /2D Live: ปิด/ }));
     expect(screen.getByRole("button", { name: /2D Live: เปิด/ })).toBeInTheDocument();
-    expect(screen.getByText("FACE CALL LIVE")).toBeInTheDocument();
+    expect(screen.getByText("Live2D ขยับตามเมาส์")).toBeInTheDocument();
   });
 
   it("sends whole-department prompt with scope 'all' when clicking a featured card", async () => {
