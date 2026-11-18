@@ -653,6 +653,9 @@ export interface ArchivedBillItem {
   billCode: string;
   departmentId: string;
   departmentName?: string;
+  departmentShortName?: string;
+  departmentCostCenter?: string;
+  departmentType?: string;
   depositUnitId?: string;
   utilityType: string;
   billingMonth: number;
@@ -662,6 +665,7 @@ export interface ArchivedBillItem {
   invoiceNumber?: string;
   invoiceAmount: number;
   paymentStatus: string;
+  billData?: Record<string, unknown>;
   archivedBy: string;
   archivedByName?: string;
   archiveReason?: string;

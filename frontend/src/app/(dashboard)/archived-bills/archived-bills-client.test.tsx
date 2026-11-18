@@ -21,12 +21,28 @@ const mockArchived: ArchivedBillItem[] = [
     billCode: "BILL-2569-001",
     departmentId: "dept-1",
     departmentName: "กองบริหารการคลัง",
+    departmentShortName: "กบค.",
+    departmentCostCenter: "0700600001",
+    departmentType: "central",
     utilityType: "ค่าไฟฟ้า",
     billingMonth: 10,
     billingYear: 2569,
+    provider: "การไฟฟ้านครหลวง",
     serviceNumber: "02-562-0600",
+    invoiceNumber: "INV-2569-888",
     invoiceAmount: 12500.5,
-    paymentStatus: "PENDING",
+    paymentStatus: "PAID",
+    billData: {
+      invoice_status: "RECEIVED",
+      invoice_number: "INV-2569-888",
+      invoice_date: "2026-10-05T00:00:00Z",
+      received_date: "2026-10-07T00:00:00Z",
+      paid_amount: 12500.5,
+      payment_doc_number: "PAY-69-009",
+      attachment_invoice: "/uploads/invoice-2569-001.pdf",
+      attachment_receipt: "/uploads/receipt-2569-001.pdf",
+      service_breakdown: JSON.stringify({ "02-562-0600": 12500.5 }),
+    },
     archivedBy: "u-1",
     archivedByName: "เจ้าหน้าที่ทดสอบ",
     archiveReason: "บันทึกข้อมูลผิดพลาด",
@@ -141,5 +157,48 @@ describe("ArchivedBillsClient", () => {
     // Switch to deletion logs tab
     await user.click(screen.getByRole("button", { name: /ประวัติการลบ/ }));
     expect(screen.getByText("ย้ายไปเก็บถาวร")).toBeInTheDocument();
+  });
+
+  it("opens bill detail dialog and renders clickable attachment links even for view-only users", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ArchivedBillsClient
+        archivedBills={mockArchived}
+        deletionLogs={mockLogs}
+        canManage={false}
+        onRefresh={onRefreshMock}
+      />,
+    );
+
+    // View-only user should not see Restore / Permanent Delete buttons, but CAN view details
+    expect(
+      screen.queryByRole("button", { name: "กู้คืน" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "ลบถาวร" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "ดูรายละเอียด" }));
+
+    expect(
+      screen.getByText("รายละเอียดรายการบิลที่เก็บถาวร"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("INV-2569-888")).toBeInTheDocument();
+    expect(screen.getByText("PAY-69-009")).toBeInTheDocument();
+    expect(screen.getByText("2 ไฟล์")).toBeInTheDocument();
+
+    const fileLinks = screen.getAllByRole("link", { name: /ดูไฟล์เอกสาร/ });
+    expect(fileLinks).toHaveLength(2);
+    expect(fileLinks[0]).toHaveAttribute(
+      "href",
+      "/uploads/invoice-2569-001.pdf",
+    );
+    expect(fileLinks[0]).toHaveAttribute("target", "_blank");
+    expect(fileLinks[1]).toHaveAttribute(
+      "href",
+      "/uploads/receipt-2569-001.pdf",
+    );
+    expect(fileLinks[1]).toHaveAttribute("target", "_blank");
   });
 });

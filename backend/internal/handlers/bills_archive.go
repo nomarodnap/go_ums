@@ -27,23 +27,27 @@ type dbQuerier interface {
 
 // ArchivedBillDTO represents a soft-deleted/archived utility bill waiting for restore or permanent deletion.
 type ArchivedBillDTO struct {
-	ID             string    `json:"id"`
-	BillCode       string    `json:"billCode"`
-	DepartmentID   string    `json:"departmentId"`
-	DepartmentName *string   `json:"departmentName,omitempty"`
-	DepositUnitID  *string   `json:"depositUnitId,omitempty"`
-	UtilityType    string    `json:"utilityType"`
-	BillingMonth   int       `json:"billingMonth"`
-	BillingYear    int       `json:"billingYear"`
-	Provider       *string   `json:"provider,omitempty"`
-	ServiceNumber  *string   `json:"serviceNumber,omitempty"`
-	InvoiceNumber  *string   `json:"invoiceNumber,omitempty"`
-	InvoiceAmount  float64   `json:"invoiceAmount"`
-	PaymentStatus  string    `json:"paymentStatus"`
-	ArchivedBy     string    `json:"archivedBy"`
-	ArchivedByName *string   `json:"archivedByName,omitempty"`
-	ArchiveReason  *string   `json:"archiveReason,omitempty"`
-	ArchivedAt     time.Time `json:"archivedAt"`
+	ID                   string         `json:"id"`
+	BillCode             string         `json:"billCode"`
+	DepartmentID         string         `json:"departmentId"`
+	DepartmentName       *string        `json:"departmentName,omitempty"`
+	DepartmentShortName  *string        `json:"departmentShortName,omitempty"`
+	DepartmentCostCenter *string        `json:"departmentCostCenter,omitempty"`
+	DepartmentType       *string        `json:"departmentType,omitempty"`
+	DepositUnitID        *string        `json:"depositUnitId,omitempty"`
+	UtilityType          string         `json:"utilityType"`
+	BillingMonth         int            `json:"billingMonth"`
+	BillingYear          int            `json:"billingYear"`
+	Provider             *string        `json:"provider,omitempty"`
+	ServiceNumber        *string        `json:"serviceNumber,omitempty"`
+	InvoiceNumber        *string        `json:"invoiceNumber,omitempty"`
+	InvoiceAmount        float64        `json:"invoiceAmount"`
+	PaymentStatus        string         `json:"paymentStatus"`
+	BillData             map[string]any `json:"billData,omitempty"`
+	ArchivedBy           string         `json:"archivedBy"`
+	ArchivedByName       *string        `json:"archivedByName,omitempty"`
+	ArchiveReason        *string        `json:"archiveReason,omitempty"`
+	ArchivedAt           time.Time      `json:"archivedAt"`
 }
 
 // BillDeletionLogDTO represents a permanent audit log entry for archive / restore / permanent deletion.
@@ -323,52 +327,54 @@ func RegisterBillArchiveRoutes(
 		}
 
 		query := `
-			SELECT id, bill_code, department_id, department_name, deposit_unit_id,
-			       utility_type, billing_month, billing_year, provider, service_number,
-			       invoice_number, COALESCE(invoice_amount, 0)::float8, payment_status,
-			       archived_by, archived_by_name, archive_reason, archived_at
-			FROM archived_utility_bills
+			SELECT a.id, a.bill_code, a.department_id, COALESCE(a.department_name, d.full_name),
+			       d.short_name, d.cost_center_code, d.type, a.deposit_unit_id,
+			       a.utility_type, a.billing_month, a.billing_year, a.provider, a.service_number,
+			       a.invoice_number, COALESCE(a.invoice_amount, 0)::float8, a.payment_status,
+			       a.bill_data, a.archived_by, a.archived_by_name, a.archive_reason, a.archived_at
+			FROM archived_utility_bills a
+			LEFT JOIN departments d ON a.department_id = d.id
 			WHERE 1=1
 		`
 		args := []any{}
 		argIdx := 1
 
 		if !canAccessAllArchivedBills(user.Role) && user.DepartmentID != "" {
-			query += fmt.Sprintf(" AND department_id = $%d", argIdx)
+			query += fmt.Sprintf(" AND a.department_id = $%d", argIdx)
 			args = append(args, user.DepartmentID)
 			argIdx++
 		} else if input.DepartmentID != "" && input.DepartmentID != "ALL" {
-			query += fmt.Sprintf(" AND department_id = $%d", argIdx)
+			query += fmt.Sprintf(" AND a.department_id = $%d", argIdx)
 			args = append(args, input.DepartmentID)
 			argIdx++
 		}
 
 		if input.UtilityType != "" && input.UtilityType != "ALL" {
-			query += fmt.Sprintf(" AND utility_type = $%d", argIdx)
+			query += fmt.Sprintf(" AND a.utility_type = $%d", argIdx)
 			args = append(args, input.UtilityType)
 			argIdx++
 		}
 
 		if input.BillingYear > 0 {
-			query += fmt.Sprintf(" AND billing_year = $%d", argIdx)
+			query += fmt.Sprintf(" AND a.billing_year = $%d", argIdx)
 			args = append(args, input.BillingYear)
 			argIdx++
 		}
 
 		if input.BillingMonth > 0 {
-			query += fmt.Sprintf(" AND billing_month = $%d", argIdx)
+			query += fmt.Sprintf(" AND a.billing_month = $%d", argIdx)
 			args = append(args, input.BillingMonth)
 			argIdx++
 		}
 
 		if s := strings.TrimSpace(input.Search); s != "" {
 			like := "%" + s + "%"
-			query += fmt.Sprintf(" AND (bill_code ILIKE $%d OR COALESCE(service_number, '') ILIKE $%d OR COALESCE(department_name, '') ILIKE $%d OR COALESCE(invoice_number, '') ILIKE $%d OR COALESCE(archived_by_name, '') ILIKE $%d)", argIdx, argIdx, argIdx, argIdx, argIdx)
+			query += fmt.Sprintf(" AND (a.bill_code ILIKE $%d OR COALESCE(a.service_number, '') ILIKE $%d OR COALESCE(a.department_name, d.full_name, '') ILIKE $%d OR COALESCE(a.invoice_number, '') ILIKE $%d OR COALESCE(a.archived_by_name, '') ILIKE $%d)", argIdx, argIdx, argIdx, argIdx, argIdx)
 			args = append(args, like)
 			argIdx++
 		}
 
-		query += " ORDER BY archived_at DESC LIMIT 300"
+		query += " ORDER BY a.archived_at DESC LIMIT 300"
 
 		rows, err := pool.Query(ctx, query, args...)
 		if err != nil {
@@ -379,12 +385,20 @@ func RegisterBillArchiveRoutes(
 		results := []ArchivedBillDTO{}
 		for rows.Next() {
 			var b ArchivedBillDTO
+			var rawBillData []byte
 			if scanErr := rows.Scan(
-				&b.ID, &b.BillCode, &b.DepartmentID, &b.DepartmentName, &b.DepositUnitID,
+				&b.ID, &b.BillCode, &b.DepartmentID, &b.DepartmentName,
+				&b.DepartmentShortName, &b.DepartmentCostCenter, &b.DepartmentType, &b.DepositUnitID,
 				&b.UtilityType, &b.BillingMonth, &b.BillingYear, &b.Provider, &b.ServiceNumber,
 				&b.InvoiceNumber, &b.InvoiceAmount, &b.PaymentStatus,
-				&b.ArchivedBy, &b.ArchivedByName, &b.ArchiveReason, &b.ArchivedAt,
+				&rawBillData, &b.ArchivedBy, &b.ArchivedByName, &b.ArchiveReason, &b.ArchivedAt,
 			); scanErr == nil {
+				if len(rawBillData) > 0 {
+					var parsed map[string]any
+					if err := json.Unmarshal(rawBillData, &parsed); err == nil {
+						b.BillData = parsed
+					}
+				}
 				results = append(results, b)
 			}
 		}
