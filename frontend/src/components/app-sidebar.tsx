@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Sparkles,
   Archive,
+  ShieldAlert,
 } from "lucide-react";
 
 import {
@@ -118,6 +119,12 @@ const navMain = [
     title: "ติดตามความคืบหน้า",
     url: "/bill-tracking",
     icon: BarChart3,
+    staffOnly: true,
+  },
+  {
+    title: "ตรวจสอบความผิดปกติ",
+    url: "/audits",
+    icon: ShieldAlert,
     staffOnly: true,
   },
   {
