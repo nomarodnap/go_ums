@@ -16,8 +16,13 @@ services:
       # Internal URL สำหรับ Next.js Server Components / Actions ติดต่อ Go Backend ภายใน Docker
       - INTERNAL_API_URL=http://backend:8080
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://ums.fisheries.go.th}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://ums.fisheries.go.th}
       - BETTER_AUTH_SECRET=${JWT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - LINE_CLIENT_ID=${LINE_CLIENT_ID:-}
+      - LINE_CLIENT_SECRET=${LINE_CLIENT_SECRET:-}
       - DATABASE_URL=${DATABASE_URL}
       - DIRECT_URL=${DIRECT_URL:-${DATABASE_URL}}
     volumes:
@@ -91,6 +96,10 @@ services:
       - GARAGE_REGION=${GARAGE_REGION:-garage}
       - GARAGE_USE_SSL=${GARAGE_USE_SSL:-false}
       - GARAGE_BUCKET=${GARAGE_BUCKET:-ums-uploads}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - LINE_MESSAGING_CHANNEL_ACCESS_TOKEN=${LINE_MESSAGING_CHANNEL_ACCESS_TOKEN:-}
+      - LINE_MESSAGING_CHANNEL_SECRET=${LINE_MESSAGING_CHANNEL_SECRET:-}
     volumes:
       - ums_uploads:/app/uploads
     networks:
