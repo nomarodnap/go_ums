@@ -40,6 +40,9 @@ func TestSessionStoreNilPool(t *testing.T) {
 	if _, err := store.AppendMessage(context.Background(), "sess-1", "user", "hello", "", nil); err == nil {
 		t.Fatalf("expected error for AppendMessage with nil pool")
 	}
+	if _, err := store.AppendMessage(context.Background(), "sess-1", "user", "bill", "", nil, "bill.pdf", "application/pdf"); err == nil {
+		t.Fatalf("expected error for AppendMessage with attachmentMeta and nil pool")
+	}
 
 	// DeleteSession with nil pool returns error
 	if err := store.DeleteSession(context.Background(), "sess-1", "user-1"); err == nil {

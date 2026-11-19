@@ -9,10 +9,17 @@ export interface AIStatusResponse {
   departmentName: string;
 }
 
+export interface ChatAttachment {
+  name: string;
+  contentType: string;
+  data: string; // base64 string
+}
+
 export interface AIChatMessage {
   role: "user" | "assistant";
   content: string;
   toolsUsed?: string[];
+  attachment?: ChatAttachment;
 }
 
 export interface AIChatResponse {
@@ -42,6 +49,8 @@ export interface AIChatSessionMessage {
   content: string;
   toolsUsed: string[];
   model: string;
+  attachmentName?: string;
+  attachmentType?: string;
   createdAt: string;
 }
 
@@ -400,7 +409,7 @@ export function useAIStatus(enabled = true) {
 }
 
 export interface AIChatPayload {
-  messages: Pick<AIChatMessage, "role" | "content">[];
+  messages: Pick<AIChatMessage, "role" | "content" | "attachment">[];
   scope?: "all" | "department";
   departmentId?: string;
   sessionId?: string;
@@ -409,7 +418,7 @@ export interface AIChatPayload {
 export function useAIChat(defaultScope: "all" | "department" = "department") {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: Pick<AIChatMessage, "role" | "content">[] | AIChatPayload) => {
+    mutationFn: async (payload: Pick<AIChatMessage, "role" | "content" | "attachment">[] | AIChatPayload) => {
       const isArray = Array.isArray(payload);
       const messages = isArray ? payload : payload.messages;
       const scope = isArray ? defaultScope : (payload.scope || defaultScope);

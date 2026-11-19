@@ -10,10 +10,18 @@ import (
 const maxToolLoopSteps = 5
 const maxHistoryMessages = 12
 
+// ChatAttachment represents an attached document or image (PDF, PNG, JPEG, WebP) in base64 format.
+type ChatAttachment struct {
+	Name        string `json:"name"`
+	ContentType string `json:"contentType"`
+	Data        string `json:"data"` // base64
+}
+
 // ChatMessage represents a single turn in the frontend/API chat history.
 type ChatMessage struct {
-	Role    string `json:"role"` // "user" or "assistant"
-	Content string `json:"content"`
+	Role       string          `json:"role"` // "user" or "assistant"
+	Content    string          `json:"content"`
+	Attachment *ChatAttachment `json:"attachment,omitempty"`
 }
 
 // ChatResult is the structured answer returned to the HTTP handler.
@@ -81,20 +89,49 @@ func (s *ChatService) Chat(ctx context.Context, scope UserScope, history []ChatM
 	contents := make([]Content, 0, len(trimmed))
 	for _, msg := range trimmed {
 		text := strings.TrimSpace(msg.Content)
-		if text == "" {
+		hasAttachment := msg.Attachment != nil && strings.TrimSpace(msg.Attachment.Data) != ""
+		if text == "" && !hasAttachment {
 			continue
 		}
 		role := "user"
 		if msg.Role == "assistant" || msg.Role == "model" {
 			role = "model"
 		}
+
+		parts := make([]Part, 0, 2)
+		if hasAttachment {
+			mime := strings.TrimSpace(msg.Attachment.ContentType)
+			b64Data := strings.TrimSpace(msg.Attachment.Data)
+			if idx := strings.Index(b64Data, ";base64,"); idx != -1 {
+				if mime == "" {
+					mime = strings.TrimPrefix(b64Data[:idx], "data:")
+				}
+				b64Data = b64Data[idx+8:]
+			}
+			if mime == "" {
+				mime = "application/pdf"
+			}
+			parts = append(parts, Part{
+				InlineData: &Blob{
+					MIMEType: mime,
+					Data:     b64Data,
+				},
+			})
+		}
+
+		if text != "" {
+			parts = append(parts, Part{Text: text})
+		} else if len(parts) > 0 {
+			parts = append(parts, Part{Text: "ช่วยตรวจสอบและอ่านข้อมูลจากไฟล์เอกสารหรือรูปภาพนี้ให้หน่อยค่ะ"})
+		}
+
 		contents = append(contents, Content{
 			Role:  role,
-			Parts: []Part{{Text: text}},
+			Parts: parts,
 		})
 	}
 	if len(contents) == 0 {
-		return nil, fmt.Errorf("กรุณาระบุข้อความคำถาม")
+		return nil, fmt.Errorf("กรุณาระบุข้อความคำถามหรือแนบไฟล์เอกสาร")
 	}
 
 	sysPrompt := BuildSystemPrompt(s.now(), scope, contextSummary)

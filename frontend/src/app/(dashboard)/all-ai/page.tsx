@@ -13,11 +13,13 @@ import {
   FileText,
   Headphones,
   History,
+  Image as ImageIcon,
   Loader2,
   Maximize2,
   MessageSquare,
   Mic,
   Minimize2,
+  Paperclip,
   PhoneOff,
   Plus,
   Radio,
@@ -33,6 +35,7 @@ import {
   User,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +53,7 @@ import {
   type AIChatMessage,
   type AIChatSession,
   type AIChatSessionDetailResponse,
+  type ChatAttachment,
   useAIChat,
   useAIChatSessions,
   useAIStatus,
@@ -63,6 +67,8 @@ import { cleanTextForSpeech } from "@/lib/speech-utils";
 
 interface UIStateMessage extends AIChatMessage {
   id: string;
+  attachmentName?: string;
+  attachmentType?: string;
 }
 
 const FEATURED_PROMPTS = [
@@ -212,6 +218,53 @@ export default function AllAIAssistantPage() {
   const [messages, setMessages] = useState<UIStateMessage[]>([]);
   const [input, setInput] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<ChatAttachment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check size limit: 15MB
+    const maxBytes = 15 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("ขนาดไฟล์เกิน 15 MB กรุณาเลือกไฟล์ที่มีขนาดเล็กกว่านี้");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // Check MIME type
+    const allowedMimes = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+    const fileType = file.type || "";
+    const isAllowed = allowedMimes.includes(fileType) || Boolean(file.name.match(/\.(pdf|png|jpe?g|webp)$/i));
+    if (!isAllowed) {
+      toast.error("รองรับเฉพาะไฟล์เอกสาร PDF หรือรูปภาพ PNG, JPEG, WebP เท่านั้น");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setSelectedAttachment({
+        name: file.name,
+        contentType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+        data: result,
+      });
+      toast.success(`แนบไฟล์: ${file.name}`);
+    };
+    reader.onerror = () => {
+      toast.error("ไม่สามารถอ่านข้อมูลไฟล์ได้");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAttachment = () => {
+    setSelectedAttachment(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   // Face Call States
   const [emotion, setEmotion] = useState<TaraEmotion>("idle");
@@ -320,8 +373,11 @@ export default function AllAIAssistantPage() {
             role: m.role,
             content: m.content,
             toolsUsed: m.toolsUsed,
+            attachmentName: m.attachmentName,
+            attachmentType: m.attachmentType,
           }))
         );
+        handleRemoveAttachment();
         setIsHistoryDrawerOpen(false);
         toast.success(`โหลดบทสนทนา: ${sess.title}`);
       }
@@ -334,6 +390,7 @@ export default function AllAIAssistantPage() {
 
   const handleNewChat = () => {
     stopSpeaking();
+    handleRemoveAttachment();
     setActiveSessionId(null);
     setMessages([]);
     setErrorMessage(null);
@@ -567,26 +624,41 @@ export default function AllAIAssistantPage() {
 
   const sendPrompt = (rawText: string) => {
     const text = rawText.trim();
-    if (!text || chatMutation.isPending || !isReady) return;
+    if ((!text && !selectedAttachment) || chatMutation.isPending || !isReady) return;
 
     stopSpeaking();
+
+    const attachmentToSend = selectedAttachment;
+    const displayText = text || (attachmentToSend ? "ช่วยตรวจสอบและอ่านข้อมูลจากไฟล์เอกสารหรือรูปภาพนี้ให้หน่อยค่ะ" : "");
 
     messageIdRef.current += 1;
     const userMessage: UIStateMessage = {
       id: `all-msg-${messageIdRef.current}`,
       role: "user",
-      content: text,
+      content: displayText,
+      attachment: attachmentToSend || undefined,
+      attachmentName: attachmentToSend?.name,
+      attachmentType: attachmentToSend?.contentType,
     };
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setInput("");
+    handleRemoveAttachment();
     setErrorMessage(null);
     setEmotion("thinking");
-    setLatestSubtitle(`กำลังสแกนและวิเคราะห์ข้อมูล 292 หน่วยงานเกี่ยวกับ "${text.slice(0, 40)}..."`);
+    setLatestSubtitle(
+      attachmentToSend
+        ? `กำลังสแกนและอ่านเอกสาร "${attachmentToSend.name}" ร่วมกับฐานข้อมูล...`
+        : `กำลังสแกนและวิเคราะห์ข้อมูล 292 หน่วยงานเกี่ยวกับ "${displayText.slice(0, 40)}..."`
+    );
 
     chatMutation.mutate(
       {
-        messages: nextMessages.map(({ role, content }) => ({ role, content })),
+        messages: nextMessages.map(({ role, content, attachment }) => ({
+          role,
+          content,
+          ...(attachment ? { attachment } : {}),
+        })),
         scope: "all",
         sessionId: activeSessionId || undefined,
       },
@@ -979,9 +1051,38 @@ export default function AllAIAssistantPage() {
                   )}
                 >
                   {msg.role === "user" ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                      {msg.content}
-                    </p>
+                    <div className="space-y-2">
+                      {(msg.attachment || msg.attachmentName) && (
+                        <div className="flex items-center gap-2 rounded-xl bg-white/20 backdrop-blur-xs px-3 py-1.5 text-xs border border-white/25">
+                          {(msg.attachment?.contentType || msg.attachmentType || "").startsWith("image/") ? (
+                            <ImageIcon className="size-4 shrink-0 text-white" />
+                          ) : (
+                            <FileText className="size-4 shrink-0 text-white" />
+                          )}
+                          <span className="font-medium truncate max-w-[200px] text-white">
+                            {msg.attachment?.name || msg.attachmentName}
+                          </span>
+                          <span className="opacity-80 text-[10px] ml-auto text-white">
+                            {(msg.attachment?.contentType || msg.attachmentType || "").includes("pdf") ? "PDF" : "รูปภาพ"}
+                          </span>
+                        </div>
+                      )}
+                      {msg.attachment?.data && (msg.attachment.contentType.startsWith("image/") || msg.attachment.data.startsWith("data:image/")) && (
+                        <div className="rounded-lg overflow-hidden border border-white/20 max-w-[260px] max-h-[180px] bg-black/10">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={msg.attachment.data.startsWith("data:") ? msg.attachment.data : `data:${msg.attachment.contentType};base64,${msg.attachment.data}`}
+                            alt={msg.attachment.name}
+                            className="object-contain w-full h-full max-h-[180px]"
+                          />
+                        </div>
+                      )}
+                      {msg.content && (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {msg.content}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {renderFormattedMessage(msg.content)}
@@ -1045,7 +1146,64 @@ export default function AllAIAssistantPage() {
               </div>
             )}
 
+            {/* Attachment preview banner */}
+            {selectedAttachment && (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  {selectedAttachment.contentType.startsWith("image/") ? (
+                    <ImageIcon className="size-4 shrink-0 text-primary" />
+                  ) : (
+                    <FileText className="size-4 shrink-0 text-primary" />
+                  )}
+                  <span className="font-medium text-foreground truncate max-w-[240px] sm:max-w-md">
+                    {selectedAttachment.name}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 bg-primary/15 text-primary border-primary/30">
+                    {selectedAttachment.contentType.includes("pdf") ? "PDF" : "รูปภาพ"}
+                  </Badge>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleRemoveAttachment}
+                  title="ยกเลิกไฟล์แนบ"
+                  className="size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md cursor-pointer shrink-0"
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Button
+                type="button"
+                variant={selectedAttachment ? "default" : "outline"}
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!isReady || chatMutation.isPending}
+                title={
+                  selectedAttachment
+                    ? `แนบไฟล์แล้ว: ${selectedAttachment.name} (คลิกเพื่อเปลี่ยนไฟล์)`
+                    : "แนบไฟล์ใบแจ้งหนี้หรือภาพถ่ายหลักฐาน (PDF, PNG, JPG, WebP ไม่เกิน 15MB)"
+                }
+                className={cn(
+                  "size-11 shrink-0 rounded-xl transition-all cursor-pointer",
+                  selectedAttachment
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Paperclip className="size-5" />
+              </Button>
+
               <Button
                 type="button"
                 variant={isListeningMic ? "default" : "outline"}
@@ -1076,9 +1234,11 @@ export default function AllAIAssistantPage() {
                 placeholder={
                   isListeningMic
                     ? "กำลังรับฟังเสียงพูดภาษาไทย... พูดคำถามได้เลยค่ะ"
-                    : isReady
-                      ? "พิมพ์หรือกดไมค์พูดถามน้องธาร่าเกี่ยวกับ 292 หน่วยงาน... (Enter เพื่อส่ง)"
-                      : "กรุณาตั้งค่า GEMINI_API_KEY ก่อนเริ่มใช้งาน"
+                    : selectedAttachment
+                      ? `แนบไฟล์ "${selectedAttachment.name}" แล้ว พิมพ์ข้อความเพิ่มเติมหรือกดส่งได้เลยค่ะ (Enter เพื่อส่ง)`
+                      : isReady
+                        ? "พิมพ์หรือแนบไฟล์บิล/รูปภาพถามน้องธาร่าเกี่ยวกับ 292 หน่วยงาน... (Enter เพื่อส่ง)"
+                        : "กรุณาตั้งค่า GEMINI_API_KEY ก่อนเริ่มใช้งาน"
                 }
                 aria-label="ข้อความถึงผู้ช่วย AI ภาพรวมทั้งกรม"
                 className="flex-1 resize-none rounded-xl border border-input bg-background p-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1086,7 +1246,7 @@ export default function AllAIAssistantPage() {
               <Button
                 type="submit"
                 size="icon"
-                disabled={!input.trim() || !isReady || chatMutation.isPending}
+                disabled={(!input.trim() && !selectedAttachment) || !isReady || chatMutation.isPending}
                 aria-label="ส่งคำถาม"
                 className="size-11 shrink-0 rounded-xl shadow-xs cursor-pointer"
               >

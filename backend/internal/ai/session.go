@@ -25,13 +25,15 @@ type ChatSession struct {
 }
 
 type ChatSessionMessage struct {
-	ID        string    `json:"id"`
-	SessionID string    `json:"sessionId"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	ToolsUsed []string  `json:"toolsUsed"`
-	Model     string    `json:"model"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID             string    `json:"id"`
+	SessionID      string    `json:"sessionId"`
+	Role           string    `json:"role"`
+	Content        string    `json:"content"`
+	ToolsUsed      []string  `json:"toolsUsed"`
+	Model          string    `json:"model"`
+	AttachmentName string    `json:"attachmentName,omitempty"`
+	AttachmentType string    `json:"attachmentType,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type SessionStore struct {
@@ -80,10 +82,15 @@ func (s *SessionStore) EnsureSchema(ctx context.Context) error {
 			content TEXT NOT NULL,
 			tools_used TEXT[] NOT NULL DEFAULT '{}',
 			model TEXT NOT NULL DEFAULT '',
+			attachment_name TEXT NOT NULL DEFAULT '',
+			attachment_type TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
 		CREATE INDEX IF NOT EXISTS ai_chat_messages_session_idx ON ai_chat_messages (session_id, created_at ASC);
+
+		ALTER TABLE ai_chat_messages ADD COLUMN IF NOT EXISTS attachment_name TEXT NOT NULL DEFAULT '';
+		ALTER TABLE ai_chat_messages ADD COLUMN IF NOT EXISTS attachment_type TEXT NOT NULL DEFAULT '';
 	`)
 	if err == nil {
 		s.schemaReady = true
@@ -205,7 +212,8 @@ func (s *SessionStore) GetSessionMessages(ctx context.Context, sessionID, userID
 	}
 
 	query := `
-		SELECT id, session_id, role, content, tools_used, model, created_at
+		SELECT id, session_id, role, content, tools_used, model,
+		       COALESCE(attachment_name, ''), COALESCE(attachment_type, ''), created_at
 		FROM ai_chat_messages
 		WHERE session_id = $1
 		ORDER BY created_at ASC
@@ -219,7 +227,7 @@ func (s *SessionStore) GetSessionMessages(ctx context.Context, sessionID, userID
 	var msgs []ChatSessionMessage
 	for rows.Next() {
 		var m ChatSessionMessage
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.ToolsUsed, &m.Model, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.ToolsUsed, &m.Model, &m.AttachmentName, &m.AttachmentType, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan session message: %w", err)
 		}
 		msgs = append(msgs, m)
@@ -257,7 +265,7 @@ func (s *SessionStore) CreateSession(ctx context.Context, userID, scope, departm
 	return s.GetSession(ctx, id, userID)
 }
 
-func (s *SessionStore) AppendMessage(ctx context.Context, sessionID, role, content, model string, toolsUsed []string) (*ChatSessionMessage, error) {
+func (s *SessionStore) AppendMessage(ctx context.Context, sessionID, role, content, model string, toolsUsed []string, attachmentMeta ...string) (*ChatSessionMessage, error) {
 	if s == nil || s.pool == nil {
 		return nil, fmt.Errorf("database unavailable")
 	}
@@ -271,10 +279,18 @@ func (s *SessionStore) AppendMessage(ctx context.Context, sessionID, role, conte
 		toolsUsed = []string{}
 	}
 
+	var attachmentName, attachmentType string
+	if len(attachmentMeta) > 0 {
+		attachmentName = attachmentMeta[0]
+	}
+	if len(attachmentMeta) > 1 {
+		attachmentType = attachmentMeta[1]
+	}
+
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO ai_chat_messages (id, session_id, role, content, tools_used, model, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, id, sessionID, role, content, toolsUsed, model, now)
+		INSERT INTO ai_chat_messages (id, session_id, role, content, tools_used, model, attachment_name, attachment_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, id, sessionID, role, content, toolsUsed, model, attachmentName, attachmentType, now)
 	if err != nil {
 		return nil, fmt.Errorf("append message: %w", err)
 	}
@@ -282,13 +298,15 @@ func (s *SessionStore) AppendMessage(ctx context.Context, sessionID, role, conte
 	_, _ = s.pool.Exec(ctx, `UPDATE ai_chat_sessions SET updated_at = $1 WHERE id = $2`, now, sessionID)
 
 	return &ChatSessionMessage{
-		ID:        id,
-		SessionID: sessionID,
-		Role:      role,
-		Content:   content,
-		ToolsUsed: toolsUsed,
-		Model:     model,
-		CreatedAt: now,
+		ID:             id,
+		SessionID:      sessionID,
+		Role:           role,
+		Content:        content,
+		ToolsUsed:      toolsUsed,
+		Model:          model,
+		AttachmentName: attachmentName,
+		AttachmentType: attachmentType,
+		CreatedAt:      now,
 	}, nil
 }
 

@@ -363,28 +363,42 @@ func RegisterAIRoutesWithServices(api huma.API, pool *pgxpool.Pool, cfg *config.
 
 		sessionID := strings.TrimSpace(input.Body.SessionID)
 		var lastUserText string
+		var lastAttachmentName string
+		var lastAttachmentType string
 		for i := len(input.Body.Messages) - 1; i >= 0; i-- {
 			if input.Body.Messages[i].Role == "user" {
 				lastUserText = strings.TrimSpace(input.Body.Messages[i].Content)
+				if input.Body.Messages[i].Attachment != nil {
+					lastAttachmentName = strings.TrimSpace(input.Body.Messages[i].Attachment.Name)
+					lastAttachmentType = strings.TrimSpace(input.Body.Messages[i].Attachment.ContentType)
+				}
 				break
 			}
 		}
 
 		if sessionStore != nil && user != nil {
-			if sessionID == "" && lastUserText != "" {
+			if sessionID == "" && (lastUserText != "" || lastAttachmentName != "") {
 				title := "บทสนทนาใหม่"
-				runes := []rune(lastUserText)
-				if len(runes) > 40 {
-					title = string(runes[:40]) + "..."
-				} else {
-					title = string(runes)
+				if lastUserText != "" {
+					runes := []rune(lastUserText)
+					if len(runes) > 40 {
+						title = string(runes[:40]) + "..."
+					} else {
+						title = string(runes)
+					}
+				} else if lastAttachmentName != "" {
+					title = "เอกสาร: " + lastAttachmentName
 				}
 				if created, err := sessionStore.CreateSession(ctx, user.UserID, reqScope, scope.DepartmentID, title); err == nil && created != nil {
 					sessionID = created.ID
 				}
 			}
-			if sessionID != "" && lastUserText != "" {
-				_, _ = sessionStore.AppendMessage(ctx, sessionID, "user", lastUserText, "", nil)
+			if sessionID != "" && (lastUserText != "" || lastAttachmentName != "") {
+				userSavedContent := lastUserText
+				if userSavedContent == "" && lastAttachmentName != "" {
+					userSavedContent = "แนบไฟล์: " + lastAttachmentName
+				}
+				_, _ = sessionStore.AppendMessage(ctx, sessionID, "user", userSavedContent, "", nil, lastAttachmentName, lastAttachmentType)
 			}
 		}
 

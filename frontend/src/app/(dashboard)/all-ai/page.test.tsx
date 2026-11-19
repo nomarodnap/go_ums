@@ -226,5 +226,13 @@ describe("AllAIAssistantPage", () => {
     expect(screen.getByText("สรุปค่าไฟฟ้ารวมทั้งกรมลดลง 5% ค่ะ")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /เริ่มบทสนทนาใหม่/ })).toBeInTheDocument();
   });
+
+  it("renders multimodal attachment upload button for invoice PDF and photos", () => {
+    render(<AllAIAssistantPage />);
+
+    const attachBtn = screen.getByTitle(/แนบไฟล์ใบแจ้งหนี้หรือภาพถ่ายหลักฐาน/);
+    expect(attachBtn).toBeInTheDocument();
+    expect(attachBtn).not.toBeDisabled();
+  });
 });
 

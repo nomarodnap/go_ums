@@ -225,3 +225,76 @@ func TestSummarizeOlderTurns(t *testing.T) {
 	}
 }
 
+func TestChatServiceMultimodalAttachment(t *testing.T) {
+	var seenRequest GenerateContentRequest
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&seenRequest); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resp := GenerateContentResponse{
+			Candidates: []Candidate{
+				{
+					Content: Content{
+						Role: "model",
+						Parts: []Part{
+							{Text: "ตรวจพบบิลค่าไฟฟ้าประจำเดือน ต.ค. 2569 ยอดเงิน 3,500.00 บาทค่ะ"},
+						},
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := NewClient("test-secret-key", "gemini-3.5-flash").WithBaseURL(srv.URL)
+	svc := NewChatService(client, &stubToolRunner{})
+
+	scope := UserScope{
+		UserID:  "u-admin",
+		Role:    "admin",
+		IsAdmin: true,
+	}
+
+	rawB64 := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+	res, err := svc.Chat(context.Background(), scope, []ChatMessage{
+		{
+			Role:    "user",
+			Content: "ช่วยอ่านบิลนี้หน่อย",
+			Attachment: &ChatAttachment{
+				Name:        "pea_bill.png",
+				ContentType: "image/png",
+				Data:        "data:image/png;base64," + rawB64,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(res.Reply, "ตรวจพบบิลค่าไฟฟ้า") {
+		t.Fatalf("unexpected reply: %s", res.Reply)
+	}
+
+	if len(seenRequest.Contents) != 1 {
+		t.Fatalf("expected 1 turn in request, got %d", len(seenRequest.Contents))
+	}
+	parts := seenRequest.Contents[0].Parts
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts (inlineData + text), got %d", len(parts))
+	}
+	if parts[0].InlineData == nil {
+		t.Fatalf("expected part 0 to have inlineData")
+	}
+	if parts[0].InlineData.MIMEType != "image/png" {
+		t.Fatalf("expected MIMEType image/png, got %s", parts[0].InlineData.MIMEType)
+	}
+	if parts[0].InlineData.Data != rawB64 {
+		t.Fatalf("expected stripped base64 data, got %s", parts[0].InlineData.Data)
+	}
+	if parts[1].Text != "ช่วยอ่านบิลนี้หน่อย" {
+		t.Fatalf("expected text part 'ช่วยอ่านบิลนี้หน่อย', got %s", parts[1].Text)
+	}
+}
+
