@@ -379,6 +379,7 @@ export const AI_TOOL_LABELS: Record<string, string> = {
   get_budget_overview: "ข้อมูลวงเงินงบประมาณ",
   get_utility_forecast: "พยากรณ์ค่าใช้จ่ายและงบประมาณ",
   search_bills_and_departments: "ค้นหาบิลและหน่วยงาน",
+  lookup_regulation_and_policy: "ค้นหาข้อระเบียบและแนวปฏิบัติราชการ",
 };
 
 export function useAIStatus(enabled = true) {

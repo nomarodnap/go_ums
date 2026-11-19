@@ -23,16 +23,18 @@ type UserScope struct {
 
 // ToolExecutor runs safe, read-only database tools on behalf of the Gemini model.
 type ToolExecutor struct {
-	pool     *pgxpool.Pool
-	now      func() time.Time
-	forecast *ForecastService
-	search   *SearchService
+	pool      *pgxpool.Pool
+	now       func() time.Time
+	forecast  *ForecastService
+	search    *SearchService
+	knowledge *KnowledgeService
 }
 
 func NewToolExecutor(pool *pgxpool.Pool) *ToolExecutor {
 	return &ToolExecutor{
-		pool: pool,
-		now:  time.Now,
+		pool:      pool,
+		now:       time.Now,
+		knowledge: NewKnowledgeService(),
 	}
 }
 
@@ -42,6 +44,10 @@ func (e *ToolExecutor) SetForecastService(f *ForecastService) {
 
 func (e *ToolExecutor) SetSearchService(s *SearchService) {
 	e.search = s
+}
+
+func (e *ToolExecutor) SetKnowledgeService(k *KnowledgeService) {
+	e.knowledge = k
 }
 
 // Declarations returns the Gemini FunctionDeclarations exposed to the model.
@@ -232,11 +238,46 @@ func (e *ToolExecutor) Declarations() []FunctionDeclaration {
 				},
 			},
 		},
+		{
+			Name:        "lookup_regulation_and_policy",
+			Description: "ค้นหาข้อมูลระเบียบกระทรวงการคลัง กฎหมายการเงินการคลังราชการ สิทธิ์เพดานค่าโทรศัพท์ตามตำแหน่ง แนวทางการขอผ่อนผันบิลผิดปกติ เอกสารหลักฐานที่จำเป็น และขั้นตอนการปฏิบัติงานในระบบ UMS",
+			Parameters: &SchemaObject{
+				Type:     "OBJECT",
+				Required: []string{"query"},
+				Properties: map[string]SchemaProperty{
+					"query": {
+						Type:        "STRING",
+						Description: "ประเด็นหรือคำถามที่ต้องการค้นหาข้อระเบียบ เช่น 'หัวหน้าศูนย์เบิกค่าโทรศัพท์ได้กี่บาท', 'น้ำรั่วต้องใช้เอกสารอะไรขอผ่อนผัน', 'บิลเดือนกันยายนเบิกข้ามปีอย่างไร', 'หลักเกณฑ์การเบิกค่าไฟบ้านพัก'",
+					},
+					"topic": {
+						Type:        "STRING",
+						Description: "หมวดหมู่ระเบียบ (ไม่บังคับ): 'phone_ceilings' (สิทธิ์ค่าโทรศัพท์), 'waiver_and_proof' (การขอผ่อนผันและเอกสารแนบ), 'fiscal_rollover' (บิลข้ามปีงบประมาณ), 'disbursement_rules' (ระเบียบการเบิกจ่าย 5 หมวด), 'budget_transfer' (การโอนงบประมาณ), 'audit_criteria' (เกณฑ์ความผิดปกติ 10 ข้อ), 'all' (ทั้งหมด)",
+					},
+				},
+			},
+		},
 	}
 }
 
 // Execute runs the named tool with the given JSON-decoded arguments and returns a JSON-object map for Gemini functionResponse.
 func (e *ToolExecutor) Execute(ctx context.Context, scope UserScope, name string, args map[string]any) (map[string]any, error) {
+	// In-memory knowledge lookup can run even if the relational database is temporarily offline
+	if name == "lookup_regulation_and_policy" {
+		res, err := e.lookupRegulationAndPolicy(ctx, scope, args)
+		if err != nil {
+			return map[string]any{"error": err.Error()}, nil
+		}
+		raw, err := json.Marshal(res)
+		if err != nil {
+			return nil, err
+		}
+		var out map[string]any
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return map[string]any{"result": res}, nil
+		}
+		return out, nil
+	}
+
 	if e.pool == nil {
 		return map[string]any{"error": "ฐานข้อมูลไม่พร้อมใช้งานในขณะนี้"}, nil
 	}
@@ -261,6 +302,8 @@ func (e *ToolExecutor) Execute(ctx context.Context, scope UserScope, name string
 		result, err = e.getUtilityForecast(ctx, scope, args)
 	case "search_bills_and_departments":
 		result, err = e.searchBillsAndDepartments(ctx, scope, args)
+	case "lookup_regulation_and_policy":
+		result, err = e.lookupRegulationAndPolicy(ctx, scope, args)
 	default:
 		return map[string]any{"error": fmt.Sprintf("unknown tool: %s", name)}, nil
 	}
@@ -1289,5 +1332,58 @@ func (e *ToolExecutor) searchBillsAndDepartments(ctx context.Context, scope User
 		"bills":       bills,
 		"deptsCount":  len(depts),
 		"departments": depts,
+	}, nil
+}
+
+func (e *ToolExecutor) lookupRegulationAndPolicy(ctx context.Context, scope UserScope, args map[string]any) (any, error) {
+	query := argString(args, "query")
+	if query == "" {
+		return map[string]any{"error": "กรุณาระบุประเด็นหรือคำถามที่ต้องการค้นหาข้อระเบียบ"}, nil
+	}
+
+	topic := argString(args, "topic")
+
+	ks := e.knowledge
+	if ks == nil {
+		ks = NewKnowledgeService()
+	}
+
+	hits := ks.Search(ctx, query, topic)
+	if len(hits) == 0 {
+		return map[string]any{
+			"query":   query,
+			"found":   false,
+			"message": "ไม่พบข้อระเบียบที่ตรงกับคำค้นหาโดยตรง แนะนำให้สอบถามกลุ่มการคลัง สำนักบริหารกลาง หรือตรวจสอบระเบียบกระทรวงการคลังว่าด้วยการเบิกจ่ายค่าใช้จ่ายในการบริหารงานของส่วนราชการ",
+		}, nil
+	}
+
+	type regHitOutput struct {
+		TopicName    string   `json:"topicName"`
+		Title        string   `json:"title"`
+		Reference    string   `json:"reference"`
+		Summary      string   `json:"summary"`
+		Details      []string `json:"details"`
+		RequiredDocs []string `json:"requiredDocs"`
+		ActionSteps  []string `json:"actionSteps"`
+	}
+
+	var results []regHitOutput
+	for _, h := range hits {
+		results = append(results, regHitOutput{
+			TopicName:    h.TopicName,
+			Title:        h.Title,
+			Reference:    h.Reference,
+			Summary:      h.Summary,
+			Details:      h.Details,
+			RequiredDocs: h.RequiredDocs,
+			ActionSteps:  h.ActionSteps,
+		})
+	}
+
+	return map[string]any{
+		"query":       query,
+		"found":       true,
+		"resultsCount": len(results),
+		"regulations": results,
 	}, nil
 }

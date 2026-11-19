@@ -18,6 +18,7 @@ func TestToolDeclarations(t *testing.T) {
 		"get_budget_overview":          false,
 		"get_utility_forecast":         false,
 		"search_bills_and_departments": false,
+		"lookup_regulation_and_policy": false,
 	}
 
 	if len(decls) != len(expectedTools) {
@@ -76,5 +77,36 @@ func TestToolExecutorUnknownTool(t *testing.T) {
 	}
 	if errMsg, ok := res["error"].(string); !ok || errMsg == "" {
 		t.Fatalf("expected error for nil pool or unknown tool, got: %v", res)
+	}
+}
+
+func TestLookupRegulationTool(t *testing.T) {
+	executor := NewToolExecutor(nil)
+	scope := UserScope{
+		UserID:  "test-user",
+		IsAdmin: true,
+	}
+
+	res, err := executor.Execute(context.Background(), scope, "lookup_regulation_and_policy", map[string]any{
+		"query": "หัวหน้าศูนย์เบิกค่าโทรศัพท์ได้กี่บาท",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error executing lookup: %v", err)
+	}
+
+	found, ok := res["found"].(bool)
+	if !ok || !found {
+		t.Fatalf("expected found=true, got %+v", res)
+	}
+
+	regs, ok := res["regulations"].([]any)
+	if !ok || len(regs) == 0 {
+		t.Fatalf("expected regulations array, got %+v", res)
+	}
+
+	firstReg := regs[0].(map[string]any)
+	title := firstReg["title"].(string)
+	if title == "" {
+		t.Errorf("expected non-empty regulation title")
 	}
 }
