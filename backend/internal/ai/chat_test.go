@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -198,6 +199,29 @@ func TestChatServiceRequiresAPIKey(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error when GEMINI_API_KEY is missing")
+	}
+}
+
+func TestSummarizeOlderTurns(t *testing.T) {
+	if got := summarizeOlderTurns(nil); got != "" {
+		t.Fatalf("expected empty summary for nil, got %q", got)
+	}
+
+	older := []ChatMessage{
+		{Role: "user", Content: "ฉันอยากทราบค่าไฟของ ศพช.สงขลา"},
+		{Role: "assistant", Content: "ค่าไฟเดือน ต.ค. 2569 ของ ศพช.สงขลา อยู่ที่ 45,230 บาทค่ะ"},
+	}
+	summary := summarizeOlderTurns(older)
+	if !strings.Contains(summary, "ผู้ใช้: ฉันอยากทราบค่าไฟของ ศพช.สงขลา") {
+		t.Errorf("expected summary to contain user turn, got %s", summary)
+	}
+	if !strings.Contains(summary, "น้องธาร่า: ค่าไฟเดือน ต.ค. 2569") {
+		t.Errorf("expected summary to contain assistant turn with น้องธาร่า label, got %s", summary)
+	}
+
+	sysPrompt := BuildSystemPrompt(time.Now(), UserScope{IsAdmin: true}, summary)
+	if !strings.Contains(sysPrompt, "Conversation Context Summary") {
+		t.Errorf("expected prompt to contain Conversation Context Summary section")
 	}
 }
 

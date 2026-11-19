@@ -52,7 +52,26 @@ vi.mock("@/lib/api/ai-hooks", async (importOriginal) => {
     ...actual,
     useAIStatus: () => mockStatusResult,
     useAIChat: (scope: string) => ({
-      mutate: (messages: any[], options: any) => mockMutate(messages, options, scope),
+      mutate: (payload: any, options: any) => mockMutate(payload, options, scope),
+      isPending: false,
+    }),
+    useAIChatSessions: () => ({
+      data: [
+        {
+          id: "sess-1",
+          userId: "u-admin",
+          title: "วิเคราะห์ค่าไฟฟ้าปี 2569",
+          scope: "all",
+          messageCount: 4,
+          lastMessage: "สรุปค่าไฟฟ้ารวมทั้งกรมลดลง 5% ค่ะ",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      isLoading: false,
+    }),
+    useDeleteAIChatSession: () => ({
+      mutate: vi.fn(),
       isPending: false,
     }),
   };
@@ -145,7 +164,11 @@ describe("AllAIAssistantPage", () => {
     await user.click(screen.getByRole("button", { name: /สรุปภาพรวมทั้งกรม/ }));
 
     expect(mockMutate).toHaveBeenCalledWith(
-      [{ role: "user", content: "สรุปภาพรวมค่าสาธารณูปโภคทั้งกรมประมงประจำเดือนนี้" }],
+      {
+        messages: [{ role: "user", content: "สรุปภาพรวมค่าสาธารณูปโภคทั้งกรมประมงประจำเดือนนี้" }],
+        scope: "all",
+        sessionId: undefined,
+      },
       expect.any(Object),
       "all",
     );
@@ -188,6 +211,20 @@ describe("AllAIAssistantPage", () => {
 
     await user.click(screen.getByRole("button", { name: /ครุ่นคิด/ }));
     expect(screen.getByText(/กำลังค้นหาและประมวลผลข้อมูล 292 หน่วยงาน/)).toBeInTheDocument();
+  });
+
+  it("opens chat history drawer and displays past sessions with new chat option", async () => {
+    const user = userEvent.setup();
+    render(<AllAIAssistantPage />);
+
+    const historyBtn = screen.getByRole("button", { name: /ประวัติแชท/ });
+    expect(historyBtn).toBeInTheDocument();
+    await user.click(historyBtn);
+
+    expect(screen.getByText("ประวัติการสนทนากับน้องธาร่า")).toBeInTheDocument();
+    expect(screen.getByText("วิเคราะห์ค่าไฟฟ้าปี 2569")).toBeInTheDocument();
+    expect(screen.getByText("สรุปค่าไฟฟ้ารวมทั้งกรมลดลง 5% ค่ะ")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /เริ่มบทสนทนาใหม่/ })).toBeInTheDocument();
   });
 });
 

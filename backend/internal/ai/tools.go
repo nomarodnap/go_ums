@@ -23,8 +23,10 @@ type UserScope struct {
 
 // ToolExecutor runs safe, read-only database tools on behalf of the Gemini model.
 type ToolExecutor struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
+	pool     *pgxpool.Pool
+	now      func() time.Time
+	forecast *ForecastService
+	search   *SearchService
 }
 
 func NewToolExecutor(pool *pgxpool.Pool) *ToolExecutor {
@@ -32,6 +34,14 @@ func NewToolExecutor(pool *pgxpool.Pool) *ToolExecutor {
 		pool: pool,
 		now:  time.Now,
 	}
+}
+
+func (e *ToolExecutor) SetForecastService(f *ForecastService) {
+	e.forecast = f
+}
+
+func (e *ToolExecutor) SetSearchService(s *SearchService) {
+	e.search = s
 }
 
 // Declarations returns the Gemini FunctionDeclarations exposed to the model.
@@ -179,6 +189,49 @@ func (e *ToolExecutor) Declarations() []FunctionDeclaration {
 				},
 			},
 		},
+		{
+			Name:        "get_utility_forecast",
+			Description: "พยากรณ์แนวโน้มค่าสาธารณูปโภคและงบประมาณล่วงหน้า (1-6 เดือนข้างหน้า) ด้วยโมเดลสถิติ Time Series Seasonal Decomposition พร้อมประเมินความเพียงพอของงบประมาณและแจ้งเตือนความเสี่ยง",
+			Parameters: &SchemaObject{
+				Type: "OBJECT",
+				Properties: map[string]SchemaProperty{
+					"months_ahead": {
+						Type:        "INTEGER",
+						Description: "จำนวนเดือนที่ต้องการพยากรณ์ล่วงหน้า (1-6 เดือน ค่าเริ่มต้น 3)",
+					},
+					"department_name": {
+						Type:        "STRING",
+						Description: "ชื่อเต็มหรือชื่อย่อของหน่วยงาน (เฉพาะผู้ใช้สิทธิ์ส่วนกลาง/admin)",
+					},
+					"fiscal_year": {
+						Type:        "INTEGER",
+						Description: "ปีงบประมาณ พ.ศ. (เช่น 2569) หรือ ค.ศ. (ค่าเริ่มต้นคือปีงบประมาณปัจจุบัน)",
+					},
+				},
+			},
+		},
+		{
+			Name:        "search_bills_and_departments",
+			Description: "ค้นหาข้อมูลบิลค่าสาธารณูปโภค หน่วยงาน หรือรหัสเครื่องวัด/มิเตอร์อย่างละเอียด ด้วยการค้นหาแบบ Semantic และคำสำคัญ (เช่น เลขที่ใบแจ้งหนี้, เลขมิเตอร์, ชื่อย่อหน่วยงาน, จังหวัด หรือสถานะ)",
+			Parameters: &SchemaObject{
+				Type:     "OBJECT",
+				Required: []string{"query"},
+				Properties: map[string]SchemaProperty{
+					"query": {
+						Type:        "STRING",
+						Description: "คำค้นหา เช่น เลขมิเตอร์ 02001..., เลขที่ใบแจ้งหนี้, ชื่อย่อหน่วยงาน ศพช.สงขลา, ค่าน้ำเชียงใหม่, บิลค้างชำระกระบี่",
+					},
+					"entity_type": {
+						Type:        "STRING",
+						Description: "ประเภทข้อมูลที่ต้องการค้นหา: 'all' (ทั้งหมด), 'bills' (เฉพาะบิล), 'departments' (เฉพาะหน่วยงาน) ค่าเริ่มต้น 'all'",
+					},
+					"limit": {
+						Type:        "INTEGER",
+						Description: "จำนวนผลลัพธ์สูงสุดที่ต้องการดึง (ค่าเริ่มต้น 5 สูงสุด 15)",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -204,6 +257,10 @@ func (e *ToolExecutor) Execute(ctx context.Context, scope UserScope, name string
 		result, err = e.getUnrecordedServices(ctx, scope, args)
 	case "get_budget_overview":
 		result, err = e.getBudgetOverview(ctx, scope, args)
+	case "get_utility_forecast":
+		result, err = e.getUtilityForecast(ctx, scope, args)
+	case "search_bills_and_departments":
+		result, err = e.searchBillsAndDepartments(ctx, scope, args)
 	default:
 		return map[string]any{"error": fmt.Sprintf("unknown tool: %s", name)}, nil
 	}
@@ -1026,12 +1083,211 @@ func (e *ToolExecutor) getBudgetOverview(ctx context.Context, scope UserScope, a
 	}
 
 	return map[string]any{
-		"scope":             scopeLabel,
-		"fiscalYearBE":      fiscalYearBE,
-		"budgetEntries":     budgetEntries,
-		"totalAllocated":    totalAllocated,
-		"totalTransferred":  totalTransferred,
-		"netBudget":         totalAllocated + totalTransferred,
-		"topBudgetItems":    items,
+		"scope":            scopeLabel,
+		"fiscalYearBE":     fiscalYearBE,
+		"budgetEntries":    budgetEntries,
+		"totalAllocated":   totalAllocated,
+		"totalTransferred": totalTransferred,
+		"netBudget":        totalAllocated + totalTransferred,
+		"topBudgetItems":   items,
+	}, nil
+}
+
+func (e *ToolExecutor) getUtilityForecast(ctx context.Context, scope UserScope, args map[string]any) (any, error) {
+	requestedDept := argString(args, "department_name")
+	deptID, scopeLabel, errResp := e.resolveDeptScope(ctx, scope, requestedDept)
+	if errResp != nil {
+		return errResp, nil
+	}
+
+	monthsAhead := argInt(args, "months_ahead", 3)
+	if monthsAhead <= 0 {
+		monthsAhead = 3
+	}
+	if monthsAhead > 6 {
+		monthsAhead = 6
+	}
+
+	fiscalYear := NormalizeFiscalYearBE(argInt(args, "fiscal_year", 0), e.now())
+
+	queryScope := scope
+	queryScope.DepartmentID = deptID
+	if deptID != "" {
+		queryScope.DepartmentName = scopeLabel
+	}
+
+	fc := e.forecast
+	if fc == nil {
+		fc = NewForecastService(nil, e.pool, nil)
+	}
+
+	res, err := fc.GetForecast(ctx, queryScope, monthsAhead, fiscalYear)
+	if err != nil {
+		return nil, fmt.Errorf("calculate utility forecast: %w", err)
+	}
+
+	type forecastPointSummary struct {
+		Label           string  `json:"label"`
+		PredictedAmount float64 `json:"predictedAmount"`
+		LowerBound      float64 `json:"lowerBound"`
+		UpperBound      float64 `json:"upperBound"`
+	}
+	var futurePoints []forecastPointSummary
+	for _, p := range res.Series {
+		if p.IsForecast {
+			futurePoints = append(futurePoints, forecastPointSummary{
+				Label:           p.Label,
+				PredictedAmount: round2(p.PredictedAmount),
+				LowerBound:      round2(p.LowerBound),
+				UpperBound:      round2(p.UpperBound),
+			})
+		}
+	}
+
+	type alertSummary struct {
+		DepartmentName    string `json:"departmentName"`
+		UtilityType       string `json:"utilityType"`
+		Severity          string `json:"severity"`
+		Title             string `json:"title"`
+		Reason            string `json:"reason"`
+		RecommendedAction string `json:"recommendedAction"`
+	}
+	var alerts []alertSummary
+	for _, a := range res.AlertPredictions {
+		if len(alerts) >= 5 {
+			break
+		}
+		alerts = append(alerts, alertSummary{
+			DepartmentName:    a.DepartmentName,
+			UtilityType:       a.UtilityType,
+			Severity:          a.Severity,
+			Title:             a.Title,
+			Reason:            a.Reason,
+			RecommendedAction: a.RecommendedAction,
+		})
+	}
+
+	return map[string]any{
+		"scope":                scopeLabel,
+		"horizonMonths":        res.Horizon,
+		"method":               res.Method,
+		"confidenceLevel":      res.ConfidenceLabel,
+		"nextMonthLabel":       res.NextMonthLabel,
+		"nextMonthPredicted":   round2(res.NextMonthPredicted),
+		"nextMonthLowerBound":  round2(res.NextMonthLowerBound),
+		"nextMonthUpperBound":  round2(res.NextMonthUpperBound),
+		"historicalAvgMonthly": round2(res.HistoricalAvgMonthly),
+		"moMForecastChangePct": round2(res.MoMForecastChangePct),
+		"futureForecasts":      futurePoints,
+		"budgetPlan": map[string]any{
+			"fiscalYearBE":            res.BudgetPlan.FiscalYearBE,
+			"netBudget":               round2(res.BudgetPlan.NetBudget),
+			"ytdSpent":                round2(res.BudgetPlan.YTDSpent),
+			"projectedRemainingSpend": round2(res.BudgetPlan.ProjectedRemainingSpend),
+			"projectedTotalSpend":     round2(res.BudgetPlan.ProjectedTotalSpend),
+			"projectedBalance":        round2(res.BudgetPlan.ProjectedBalance),
+			"projectedUtilizationPct": round1(res.BudgetPlan.ProjectedUtilizationPct),
+			"status":                  res.BudgetPlan.Status,
+		},
+		"earlyAlerts": alerts,
+	}, nil
+}
+
+func (e *ToolExecutor) searchBillsAndDepartments(ctx context.Context, scope UserScope, args map[string]any) (any, error) {
+	query := argString(args, "query")
+	if query == "" {
+		return map[string]any{"error": "กรุณาระบุคำค้นหา"}, nil
+	}
+
+	entityType := argString(args, "entity_type")
+	if entityType == "" {
+		entityType = "all"
+	}
+
+	limit := argInt(args, "limit", 5)
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 15 {
+		limit = 15
+	}
+
+	sc := e.search
+	if sc == nil {
+		sc = NewSearchService(nil, e.pool)
+	}
+
+	res, err := sc.Search(ctx, scope, SearchRequest{
+		Query:      query,
+		EntityType: entityType,
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search bills and departments: %w", err)
+	}
+
+	type billHitSummary struct {
+		BillCode       string   `json:"billCode"`
+		DepartmentName string   `json:"departmentName"`
+		UtilityType    string   `json:"utilityType"`
+		BillingMonth   int      `json:"billingMonth"`
+		BillingYearBE  int      `json:"billingYearBE"`
+		ServiceNumber  string   `json:"serviceNumber,omitempty"`
+		InvoiceNumber  string   `json:"invoiceNumber,omitempty"`
+		InvoiceAmount  float64  `json:"invoiceAmount"`
+		PaymentStatus  string   `json:"paymentStatus"`
+		InvoiceStatus  string   `json:"invoiceStatus"`
+		HasAnomaly     bool     `json:"hasAnomaly"`
+		MatchReasons   []string `json:"matchReasons"`
+	}
+
+	var bills []billHitSummary
+	for _, b := range res.Bills {
+		bills = append(bills, billHitSummary{
+			BillCode:       b.BillCode,
+			DepartmentName: b.DepartmentName,
+			UtilityType:    b.UtilityType,
+			BillingMonth:   b.BillingMonth,
+			BillingYearBE:  b.BillingYearBE,
+			ServiceNumber:  b.ServiceNumber,
+			InvoiceNumber:  b.InvoiceNumber,
+			InvoiceAmount:  b.InvoiceAmount,
+			PaymentStatus:  b.PaymentStatus,
+			InvoiceStatus:  b.InvoiceStatus,
+			HasAnomaly:     b.HasAnomaly,
+			MatchReasons:   b.MatchReasons,
+		})
+	}
+
+	type deptHitSummary struct {
+		FullName       string   `json:"fullName"`
+		ShortName      string   `json:"shortName,omitempty"`
+		Province       string   `json:"province,omitempty"`
+		Region         string   `json:"region,omitempty"`
+		Type           string   `json:"type,omitempty"`
+		CostCenterCode string   `json:"costCenterCode,omitempty"`
+		MatchReasons   []string `json:"matchReasons"`
+	}
+
+	var depts []deptHitSummary
+	for _, d := range res.Departments {
+		depts = append(depts, deptHitSummary{
+			FullName:       d.FullName,
+			ShortName:      d.ShortName,
+			Province:       d.Province,
+			Region:         d.Region,
+			Type:           d.Type,
+			CostCenterCode: d.CostCenter,
+			MatchReasons:   d.MatchReasons,
+		})
+	}
+
+	return map[string]any{
+		"query":       res.Query,
+		"searchMode":  res.Mode,
+		"billsCount":  len(bills),
+		"bills":       bills,
+		"deptsCount":  len(depts),
+		"departments": depts,
 	}, nil
 }

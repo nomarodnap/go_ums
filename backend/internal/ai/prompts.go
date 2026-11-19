@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -11,7 +12,7 @@ var thaiMonthNames = []string{
 }
 
 // BuildSystemPrompt constructs the Thai system instruction tailored to the current date and user scope.
-func BuildSystemPrompt(now time.Time, scope UserScope) string {
+func BuildSystemPrompt(now time.Time, scope UserScope, contextSummary ...string) string {
 	month := int(now.Month())
 	ceYear := now.Year()
 	beYear := ceYear + 543
@@ -31,7 +32,7 @@ func BuildSystemPrompt(now time.Time, scope UserScope) string {
 	}
 
 	isWholeDept := scope.Channel == "web_all" || (scope.IsAdmin && scope.Channel != "web_department")
-	offTopicRefusal := `ชี้แจงสั้นๆ และสุภาพว่า: "ขออภัยครับ ผมเป็นผู้ช่วย AI ประจำระบบรายงานค่าสาธารณูปโภค กรมประมง (UMS) จึงสามารถให้บริการข้อมูลได้เฉพาะเรื่องค่าสาธารณูปโภค บิลค้างชำระ และงบประมาณของหน่วยงานเท่านั้นครับ หากมีข้อสงสัยเกี่ยวกับค่าสาธารณูปโภค สามารถสอบถามได้เลยนะครับ เช่น 'มีบิลค้างชำระไหม' หรือ 'สรุปค่าไฟปีนี้ให้หน่อย'"`
+	offTopicRefusal := `ชี้แจงสั้นๆ และสุภาพว่า: "ขออภัยด้วยนะคะ น้องธาร่าเป็นผู้ช่วย AI ประจำระบบรายงานค่าสาธารณูปโภค กรมประมง (UMS) จึงสามารถให้บริการข้อมูลได้เฉพาะเรื่องค่าสาธารณูปโภค บิลค้างชำระ และงบประมาณของหน่วยงานเท่านั้นค่ะ หากมีข้อสงสัยเกี่ยวกับค่าสาธารณูปโภค สามารถสอบถามธาร่าได้เลยนะคะ เช่น 'มีบิลค้างชำระไหม' หรือ 'สรุปค่าไฟปีนี้ให้หน่อยค่ะ'"`
 	if isWholeDept {
 		offTopicRefusal = `ชี้แจงสั้นๆ และสุภาพว่า: "ขออภัยด้วยนะคะ น้องธาร่าเป็นผู้ช่วย AI ประจำระบบรายงานค่าสาธารณูปโภค กรมประมง (UMS) จึงสามารถให้บริการข้อมูลได้เฉพาะเรื่องค่าสาธารณูปโภค บิลค้างชำระ และงบประมาณของภาพรวมทั้งกรมเท่านั้นค่ะ หากมีข้อสงสัยเกี่ยวกับค่าสาธารณูปโภค สามารถสอบถามธาร่าได้เลยนะคะ เช่น 'สรุปภาพรวมค่าไฟฟ้ารวมทั้งกรมปีนี้ให้หน่อยค่ะ'"`
 	}
@@ -206,6 +207,13 @@ func BuildSystemPrompt(now time.Time, scope UserScope) string {
    - ห้ามใส่หัวข้อหรือคำภาษาอังกฤษกำกับใดๆ ทั้งสิ้นในข้อความคำตอบ
 6. ควบคุมเนื้อหาให้อยู่ในขอบเขตระบบรายงานค่าสาธารณูปโภค กรมประมง (UMS) เสมอ`,
 		)
+	}
+
+	if len(contextSummary) > 0 && strings.TrimSpace(contextSummary[0]) != "" {
+		basePrompt += fmt.Sprintf(`
+
+บริบทสรุปจากการสนทนาก่อนหน้านี้ (Conversation Context Summary):
+%s`, strings.TrimSpace(contextSummary[0]))
 	}
 
 	return basePrompt

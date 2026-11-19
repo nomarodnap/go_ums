@@ -32,6 +32,7 @@ type AIChatInput struct {
 		Messages     []ai.ChatMessage `json:"messages" minItems:"1" doc:"Conversation history ending with the latest user message"`
 		Scope        string           `json:"scope,omitempty" doc:"Target scope: 'all' (whole department 292 departments) or 'department' (strictly department scope, like LINE OA)"`
 		DepartmentID string           `json:"departmentId,omitempty" doc:"Specific department ID when in department scope"`
+		SessionID    string           `json:"sessionId,omitempty" doc:"Optional session ID for persistent web chat history"`
 	}
 }
 
@@ -40,6 +41,39 @@ type AIChatOutput struct {
 		Reply     string   `json:"reply"`
 		ToolsUsed []string `json:"toolsUsed"`
 		Model     string   `json:"model"`
+		SessionID string   `json:"sessionId,omitempty"`
+	} `json:"body"`
+}
+
+type AIListSessionsInput struct {
+	Scope string `query:"scope" doc:"Scope filter: 'all' or 'department'"`
+	Limit int    `query:"limit" doc:"Max sessions to list (default 30)"`
+}
+
+type AIListSessionsOutput struct {
+	Body struct {
+		Sessions []ai.ChatSession `json:"sessions"`
+	} `json:"body"`
+}
+
+type AIGetSessionInput struct {
+	SessionID string `path:"sessionId" doc:"Chat session ID"`
+}
+
+type AIGetSessionOutput struct {
+	Body struct {
+		Session  ai.ChatSession          `json:"session"`
+		Messages []ai.ChatSessionMessage `json:"messages"`
+	} `json:"body"`
+}
+
+type AIDeleteSessionInput struct {
+	SessionID string `path:"sessionId" doc:"Chat session ID"`
+}
+
+type AIDeleteSessionOutput struct {
+	Body struct {
+		Success bool `json:"success"`
 	} `json:"body"`
 }
 
@@ -126,12 +160,13 @@ type AIForecastOutput struct {
 }
 
 type AIRouteDeps struct {
-	Summary     *ai.SummaryService
-	Search      *ai.SearchService
-	Categorizer *ai.CategorizerService
-	Extractor   *ai.ExtractorService
-	Forecast    *ai.ForecastService
-	Chat        *ai.ChatService
+	Summary      *ai.SummaryService
+	Search       *ai.SearchService
+	Categorizer  *ai.CategorizerService
+	Extractor    *ai.ExtractorService
+	Forecast     *ai.ForecastService
+	Chat         *ai.ChatService
+	SessionStore *ai.SessionStore
 }
 
 func resolveAIUserScope(ctx context.Context, pool *pgxpool.Pool, user *auth.Claims) ai.UserScope {
@@ -238,6 +273,14 @@ func RegisterAIRoutesWithServices(api huma.API, pool *pgxpool.Pool, cfg *config.
 		forecastService = ai.NewForecastService(client, pool, nil)
 	}
 
+	sessionStore := deps.SessionStore
+	if sessionStore == nil && pool != nil {
+		sessionStore = ai.NewSessionStore(pool)
+	}
+
+	tools.SetForecastService(forecastService)
+	tools.SetSearchService(searchService)
+
 	// GET /api/ai/status
 	huma.Register(api, huma.Operation{
 		OperationID: "getAIStatus",
@@ -318,6 +361,33 @@ func RegisterAIRoutesWithServices(api huma.API, pool *pgxpool.Pool, cfg *config.
 			}
 		}
 
+		sessionID := strings.TrimSpace(input.Body.SessionID)
+		var lastUserText string
+		for i := len(input.Body.Messages) - 1; i >= 0; i-- {
+			if input.Body.Messages[i].Role == "user" {
+				lastUserText = strings.TrimSpace(input.Body.Messages[i].Content)
+				break
+			}
+		}
+
+		if sessionStore != nil && user != nil {
+			if sessionID == "" && lastUserText != "" {
+				title := "บทสนทนาใหม่"
+				runes := []rune(lastUserText)
+				if len(runes) > 40 {
+					title = string(runes[:40]) + "..."
+				} else {
+					title = string(runes)
+				}
+				if created, err := sessionStore.CreateSession(ctx, user.UserID, reqScope, scope.DepartmentID, title); err == nil && created != nil {
+					sessionID = created.ID
+				}
+			}
+			if sessionID != "" && lastUserText != "" {
+				_, _ = sessionStore.AppendMessage(ctx, sessionID, "user", lastUserText, "", nil)
+			}
+		}
+
 		res, err := chatService.Chat(ctx, scope, input.Body.Messages)
 		if err != nil {
 			return nil, mapAIError("ไม่สามารถประมวลผลคำถามด้วย AI ได้", chatService.Model(), err)
@@ -330,6 +400,109 @@ func RegisterAIRoutesWithServices(api huma.API, pool *pgxpool.Pool, cfg *config.
 			out.Body.ToolsUsed = []string{}
 		}
 		out.Body.Model = res.Model
+		if sessionStore != nil && sessionID != "" {
+			_, _ = sessionStore.AppendMessage(ctx, sessionID, "assistant", res.Reply, res.Model, res.ToolsUsed)
+			out.Body.SessionID = sessionID
+		}
+		return out, nil
+	})
+
+	// GET /api/ai/sessions
+	huma.Register(api, huma.Operation{
+		OperationID: "listAIChatSessions",
+		Method:      http.MethodGet,
+		Path:        "/api/ai/sessions",
+		Summary:     "List stored AI chat sessions for the current user",
+		Tags:        []string{"AI", "Sessions"},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}, func(ctx context.Context, input *AIListSessionsInput) (*AIListSessionsOutput, error) {
+		user, ok := auth.UserFromContext(ctx)
+		if !ok || user == nil {
+			return nil, huma.Error401Unauthorized("กรุณาเข้าสู่ระบบก่อนดูประวัติการสนทนา")
+		}
+		if sessionStore == nil {
+			out := &AIListSessionsOutput{}
+			out.Body.Sessions = []ai.ChatSession{}
+			return out, nil
+		}
+
+		sessions, err := sessionStore.ListSessions(ctx, user.UserID, input.Scope, input.Limit)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("ไม่สามารถโหลดประวัติการสนทนาได้: " + err.Error())
+		}
+		out := &AIListSessionsOutput{}
+		out.Body.Sessions = sessions
+		if out.Body.Sessions == nil {
+			out.Body.Sessions = []ai.ChatSession{}
+		}
+		return out, nil
+	})
+
+	// GET /api/ai/sessions/{sessionId}
+	huma.Register(api, huma.Operation{
+		OperationID: "getAIChatSession",
+		Method:      http.MethodGet,
+		Path:        "/api/ai/sessions/{sessionId}",
+		Summary:     "Get a chat session and its full message history",
+		Tags:        []string{"AI", "Sessions"},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}, func(ctx context.Context, input *AIGetSessionInput) (*AIGetSessionOutput, error) {
+		user, ok := auth.UserFromContext(ctx)
+		if !ok || user == nil {
+			return nil, huma.Error401Unauthorized("กรุณาเข้าสู่ระบบก่อนดูประวัติการสนทนา")
+		}
+		if sessionStore == nil {
+			return nil, huma.Error503ServiceUnavailable("ฐานข้อมูลประวัติการสนทนายังไม่พร้อมใช้งาน")
+		}
+
+		sess, err := sessionStore.GetSession(ctx, input.SessionID, user.UserID)
+		if err != nil {
+			return nil, huma.Error404NotFound("ไม่พบบทสนทนานี้")
+		}
+
+		msgs, err := sessionStore.GetSessionMessages(ctx, input.SessionID, user.UserID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("ไม่สามารถโหลดข้อความในบทสนทนาได้: " + err.Error())
+		}
+
+		out := &AIGetSessionOutput{}
+		out.Body.Session = *sess
+		out.Body.Messages = msgs
+		if out.Body.Messages == nil {
+			out.Body.Messages = []ai.ChatSessionMessage{}
+		}
+		return out, nil
+	})
+
+	// DELETE /api/ai/sessions/{sessionId}
+	huma.Register(api, huma.Operation{
+		OperationID: "deleteAIChatSession",
+		Method:      http.MethodDelete,
+		Path:        "/api/ai/sessions/{sessionId}",
+		Summary:     "Delete a chat session and its message history",
+		Tags:        []string{"AI", "Sessions"},
+		Security: []map[string][]string{
+			{"bearerAuth": {}},
+		},
+	}, func(ctx context.Context, input *AIDeleteSessionInput) (*AIDeleteSessionOutput, error) {
+		user, ok := auth.UserFromContext(ctx)
+		if !ok || user == nil {
+			return nil, huma.Error401Unauthorized("กรุณาเข้าสู่ระบบก่อนจัดการบทสนทนา")
+		}
+		if sessionStore == nil {
+			return nil, huma.Error503ServiceUnavailable("ฐานข้อมูลประวัติการสนทนายังไม่พร้อมใช้งาน")
+		}
+
+		if err := sessionStore.DeleteSession(ctx, input.SessionID, user.UserID); err != nil {
+			return nil, huma.Error404NotFound("ไม่พบบทสนทนานี้ หรือถูกลบไปแล้ว")
+		}
+
+		out := &AIDeleteSessionOutput{}
+		out.Body.Success = true
 		return out, nil
 	})
 

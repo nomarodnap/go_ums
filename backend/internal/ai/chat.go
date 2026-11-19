@@ -68,10 +68,14 @@ func (s *ChatService) Chat(ctx context.Context, scope UserScope, history []ChatM
 	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
 	defer cancel()
 
-	// Keep the most recent turns to control token usage and latency
+	// Keep the most recent turns to control token usage and latency,
+	// while summarizing older turns so conversational context is not forgotten.
+	var contextSummary string
 	trimmed := history
 	if len(trimmed) > maxHistoryMessages {
+		older := trimmed[:len(trimmed)-maxHistoryMessages]
 		trimmed = trimmed[len(trimmed)-maxHistoryMessages:]
+		contextSummary = summarizeOlderTurns(older)
 	}
 
 	contents := make([]Content, 0, len(trimmed))
@@ -93,7 +97,7 @@ func (s *ChatService) Chat(ctx context.Context, scope UserScope, history []ChatM
 		return nil, fmt.Errorf("กรุณาระบุข้อความคำถาม")
 	}
 
-	sysPrompt := BuildSystemPrompt(s.now(), scope)
+	sysPrompt := BuildSystemPrompt(s.now(), scope, contextSummary)
 	var tools []Tool
 	if s.tools != nil {
 		decls := s.tools.Declarations()
@@ -214,7 +218,7 @@ func (s *ChatService) Chat(ctx context.Context, scope UserScope, history []ChatM
 	}
 	reply := strings.TrimSpace(strings.Join(finalParts, "\n"))
 	if reply == "" {
-		reply = "ขออภัย ข้อมูลที่ดึงมีหลายขั้นตอนเกินกำหนด กรุณาถามให้เจาะจงขึ้นเล็กน้อยครับ"
+		reply = "ขออภัย ข้อมูลที่ดึงมีหลายขั้นตอนเกินกำหนด กรุณาถามให้เจาะจงขึ้นเล็กน้อยค่ะ"
 	}
 
 	return &ChatResult{
@@ -222,5 +226,34 @@ func (s *ChatService) Chat(ctx context.Context, scope UserScope, history []ChatM
 		ToolsUsed: toolsUsed,
 		Model:     s.client.Model(),
 	}, nil
+}
+
+func summarizeOlderTurns(older []ChatMessage) string {
+	if len(older) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("สาระสำคัญจากการสนทนาช่วงก่อนหน้า:\n")
+	for i, m := range older {
+		text := strings.TrimSpace(m.Content)
+		if text == "" {
+			continue
+		}
+		// Truncate overly long turns in summary
+		runes := []rune(text)
+		if len(runes) > 120 {
+			text = string(runes[:120]) + "..."
+		}
+		roleLabel := "ผู้ใช้"
+		if m.Role == "assistant" || m.Role == "model" {
+			roleLabel = "น้องธาร่า"
+		}
+		sb.WriteString(fmt.Sprintf("- %s: %s\n", roleLabel, text))
+		if i >= 8 {
+			sb.WriteString("- ... (มีบทสนทนาก่อนหน้าเพิ่มเติม)\n")
+			break
+		}
+	}
+	return sb.String()
 }
 

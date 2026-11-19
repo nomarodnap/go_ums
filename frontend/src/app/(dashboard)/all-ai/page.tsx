@@ -12,10 +12,14 @@ import {
   Expand,
   FileText,
   Headphones,
+  History,
+  Loader2,
   Maximize2,
+  MessageSquare,
   Mic,
   Minimize2,
   PhoneOff,
+  Plus,
   Radio,
   RotateCcw,
   Send,
@@ -24,6 +28,7 @@ import {
   Shrink,
   Smile,
   Sparkles,
+  Trash2,
   TrendingUp,
   User,
   Volume2,
@@ -32,13 +37,25 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { toast } from "sonner";
 import {
   AI_TOOL_LABELS,
   type AIChatMessage,
+  type AIChatSession,
+  type AIChatSessionDetailResponse,
   useAIChat,
+  useAIChatSessions,
   useAIStatus,
+  useDeleteAIChatSession,
 } from "@/lib/api/ai-hooks";
+import { customInstance } from "@/lib/api/custom-instance";
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { cn } from "@/lib/utils";
 import { TaraAvatar, type TaraEmotion } from "@/components/ai-chat/tara-avatar";
@@ -268,6 +285,10 @@ export default function AllAIAssistantPage() {
   const { data: status, isLoading: isStatusLoading, isError: isStatusError } = useAIStatus(true);
   const chatMutation = useAIChat("all");
 
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+
   const isEnabled = status?.enabled === true;
   const isReady = isEnabled && !isStatusLoading;
 
@@ -277,6 +298,63 @@ export default function AllAIAssistantPage() {
     currentUser?.role === "auditor" ||
     currentUser?.role === "strategy_finance" ||
     status?.isAdmin === true;
+
+  const { data: sessions = [], isLoading: isSessionsLoading } = useAIChatSessions("all", isCentralStaff);
+  const deleteSessionMutation = useDeleteAIChatSession();
+
+  const handleSelectSession = async (sess: AIChatSession) => {
+    try {
+      setIsLoadingSession(true);
+      setActiveSessionId(sess.id);
+      stopSpeaking();
+      const res = await customInstance<AIChatSessionDetailResponse>({
+        url: `/api/ai/sessions/${sess.id}`,
+        method: "GET",
+      });
+      if (res.data?.messages) {
+        setMessages(
+          res.data.messages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            toolsUsed: m.toolsUsed,
+          }))
+        );
+        setIsHistoryDrawerOpen(false);
+        toast.success(`โหลดบทสนทนา: ${sess.title}`);
+      }
+    } catch {
+      toast.error("ไม่สามารถโหลดข้อความในบทสนทนานี้ได้");
+    } finally {
+      setIsLoadingSession(false);
+    }
+  };
+
+  const handleNewChat = () => {
+    stopSpeaking();
+    setActiveSessionId(null);
+    setMessages([]);
+    setErrorMessage(null);
+    setEmotion("idle");
+    setLatestSubtitle("เริ่มการสนทนาใหม่แล้วค่ะ สามารถเลือกคำถามแนะนำหรือพิมพ์สอบถามได้เลยนะคะ");
+    setIsHistoryDrawerOpen(false);
+    toast.info("เริ่มบทสนทนาใหม่แล้วค่ะ");
+  };
+
+  const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    deleteSessionMutation.mutate(sessionId, {
+      onSuccess: () => {
+        toast.success("ลบบทสนทนาเรียบร้อยแล้วค่ะ");
+        if (activeSessionId === sessionId) {
+          handleNewChat();
+        }
+      },
+      onError: () => {
+        toast.error("ไม่สามารถลบบทสนทนาได้");
+      },
+    });
+  };
 
   // Update Listening state when typing or mic is listening
   useEffect(() => {
@@ -505,9 +583,16 @@ export default function AllAIAssistantPage() {
     setLatestSubtitle(`กำลังสแกนและวิเคราะห์ข้อมูล 292 หน่วยงานเกี่ยวกับ "${text.slice(0, 40)}..."`);
 
     chatMutation.mutate(
-      nextMessages.map(({ role, content }) => ({ role, content })),
+      {
+        messages: nextMessages.map(({ role, content }) => ({ role, content })),
+        scope: "all",
+        sessionId: activeSessionId || undefined,
+      },
       {
         onSuccess: (res) => {
+          if (res.sessionId && !activeSessionId) {
+            setActiveSessionId(res.sessionId);
+          }
           messageIdRef.current += 1;
           const replyId = `all-msg-${messageIdRef.current}`;
           setMessages((prev) => [
@@ -565,13 +650,7 @@ export default function AllAIAssistantPage() {
     }
   };
 
-  const handleClear = () => {
-    stopSpeaking();
-    setMessages([]);
-    setErrorMessage(null);
-    setEmotion("idle");
-    setLatestSubtitle("เริ่มการสนทนาใหม่แล้วค่ะ สามารถเลือกคำถามแนะนำหรือพิมพ์สอบถามได้เลยนะคะ");
-  };
+  const handleClear = handleNewChat;
 
   if (!isCentralStaff && !isStatusLoading) {
     return (
@@ -658,18 +737,36 @@ export default function AllAIAssistantPage() {
             <span className="hidden sm:inline">{isTheaterMode ? "โหมดแยกหน้าต่าง" : "โหมดเต็มจอ"}</span>
           </Button>
 
-          {messages.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleClear}
-              className="gap-1.5 text-xs rounded-xl cursor-pointer"
-            >
-              <RotateCcw className="size-3.5" />
-              <span>เริ่มบทสนทนาใหม่</span>
-            </Button>
-          )}
+          {/* Chat History Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsHistoryDrawerOpen(true)}
+            title="ดูประวัติการสนทนากับน้องธาร่า"
+            className="gap-1.5 text-xs rounded-xl cursor-pointer"
+          >
+            <History className="size-3.5 text-primary" />
+            <span>ประวัติแชท</span>
+            {sessions.length > 0 && (
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono ml-0.5">
+                {sessions.length}
+              </Badge>
+            )}
+          </Button>
+
+          {/* New Chat Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleNewChat}
+            title="เริ่มบทสนทนาใหม่"
+            className="gap-1.5 text-xs rounded-xl cursor-pointer"
+          >
+            <Plus className="size-3.5" />
+            <span>สนทนาใหม่</span>
+          </Button>
         </div>
       </div>
 
@@ -1007,6 +1104,107 @@ export default function AllAIAssistantPage() {
           </div>
         </Card>
       </div>
+
+      {/* Chat History Drawer */}
+      <Sheet open={isHistoryDrawerOpen} onOpenChange={setIsHistoryDrawerOpen}>
+        <SheetContent side="right" className="w-[360px] sm:w-[420px] overflow-y-auto flex flex-col p-6">
+          <SheetHeader className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                <History className="size-4" />
+              </div>
+              <SheetTitle className="text-base font-bold">ประวัติการสนทนากับน้องธาร่า</SheetTitle>
+            </div>
+            <SheetDescription className="text-xs text-muted-foreground">
+              เรียกดูบทสนทนาเดิม หรือเริ่มบทสนทนาใหม่
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="pt-4 pb-2">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={handleNewChat}
+              className="w-full gap-2 rounded-xl text-xs font-medium cursor-pointer shadow-xs"
+            >
+              <Plus className="size-3.5" />
+              <span>เริ่มบทสนทนาใหม่</span>
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1 pt-1">
+            {isSessionsLoading || isLoadingSession ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                <Loader2 className="size-6 animate-spin text-primary" />
+                <span className="text-xs">กำลังโหลดประวัติแชท...</span>
+              </div>
+            ) : sessions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground gap-2">
+                <div className="size-10 rounded-full bg-muted/60 flex items-center justify-center">
+                  <MessageSquare className="size-5 text-muted-foreground" />
+                </div>
+                <p className="text-xs">ยังไม่มีประวัติการสนทนา</p>
+                <p className="text-[11px] text-muted-foreground/80">
+                  เมื่อเริ่มสนทนากับน้องธาร่า ระบบจะบันทึกประวัติให้อัตโนมัติค่ะ
+                </p>
+              </div>
+            ) : (
+              sessions.map((sess) => {
+                const isActive = activeSessionId === sess.id;
+                const dateStr = new Date(sess.updatedAt).toLocaleDateString("th-TH", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                return (
+                  <div
+                    key={sess.id}
+                    onClick={() => handleSelectSession(sess)}
+                    className={cn(
+                      "group relative flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer",
+                      isActive
+                        ? "bg-primary/5 border-primary/40 shadow-xs ring-1 ring-primary/20"
+                        : "bg-card border-border/70 hover:border-primary/30 hover:bg-muted/40"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="text-xs font-semibold text-foreground line-clamp-1 flex-1">
+                        {sess.title || "บทสนทนาใหม่"}
+                      </h4>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDeleteSession(e, sess.id)}
+                        title="ลบบทสนทนานี้"
+                        className="size-6 -mr-1 -mt-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg shrink-0 opacity-60 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+
+                    {sess.lastMessage && (
+                      <p className="text-[11px] text-muted-foreground line-clamp-1 mt-1">
+                        {sess.lastMessage}
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 mt-2 font-mono">
+                      <span>{dateStr}</span>
+                      <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">
+                        {sess.messageCount} ข้อความ
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

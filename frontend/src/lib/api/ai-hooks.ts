@@ -19,6 +19,35 @@ export interface AIChatResponse {
   reply: string;
   toolsUsed: string[];
   model: string;
+  sessionId?: string;
+}
+
+export interface AIChatSession {
+  id: string;
+  userId: string;
+  title: string;
+  scope: string;
+  departmentId?: string;
+  departmentName?: string;
+  messageCount: number;
+  lastMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIChatSessionMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  toolsUsed: string[];
+  model: string;
+  createdAt: string;
+}
+
+export interface AIChatSessionDetailResponse {
+  session: AIChatSession;
+  messages: AIChatSessionMessage[];
 }
 
 export interface MonthlySummaryMetrics {
@@ -348,6 +377,8 @@ export const AI_TOOL_LABELS: Record<string, string> = {
   get_monthly_trend: "วิเคราะห์แนวโน้มรายเดือน",
   get_unrecorded_services: "ตรวจสอบหมายเลขที่ยังไม่บันทึก",
   get_budget_overview: "ข้อมูลวงเงินงบประมาณ",
+  get_utility_forecast: "พยากรณ์ค่าใช้จ่ายและงบประมาณ",
+  search_bills_and_departments: "ค้นหาบิลและหน่วยงาน",
 };
 
 export function useAIStatus(enabled = true) {
@@ -371,15 +402,18 @@ export interface AIChatPayload {
   messages: Pick<AIChatMessage, "role" | "content">[];
   scope?: "all" | "department";
   departmentId?: string;
+  sessionId?: string;
 }
 
 export function useAIChat(defaultScope: "all" | "department" = "department") {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: Pick<AIChatMessage, "role" | "content">[] | AIChatPayload) => {
       const isArray = Array.isArray(payload);
       const messages = isArray ? payload : payload.messages;
       const scope = isArray ? defaultScope : (payload.scope || defaultScope);
       const departmentId = isArray ? undefined : payload.departmentId;
+      const sessionId = isArray ? undefined : payload.sessionId;
 
       const res = await customInstance<AIChatResponse>({
         url: "/api/ai/chat",
@@ -388,9 +422,63 @@ export function useAIChat(defaultScope: "all" | "department" = "department") {
           messages,
           scope,
           ...(departmentId ? { departmentId } : {}),
+          ...(sessionId ? { sessionId } : {}),
         },
       });
       return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/sessions"] });
+    },
+  });
+}
+
+export function useAIChatSessions(scope?: "all" | "department", enabled = true) {
+  return useQuery({
+    queryKey: ["/api/ai/sessions", { scope }],
+    queryFn: async ({ signal }) => {
+      const res = await customInstance<{ sessions: AIChatSession[] }>({
+        url: "/api/ai/sessions",
+        method: "GET",
+        params: scope ? { scope } : undefined,
+        signal,
+      });
+      return res.data?.sessions || [];
+    },
+    enabled,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAIChatSession(sessionId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["/api/ai/sessions", sessionId],
+    queryFn: async ({ signal }) => {
+      if (!sessionId) return null;
+      const res = await customInstance<AIChatSessionDetailResponse>({
+        url: `/api/ai/sessions/${sessionId}`,
+        method: "GET",
+        signal,
+      });
+      return res.data;
+    },
+    enabled: enabled && !!sessionId,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useDeleteAIChatSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await customInstance<{ success: boolean }>({
+        url: `/api/ai/sessions/${sessionId}`,
+        method: "DELETE",
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/sessions"] });
     },
   });
 }

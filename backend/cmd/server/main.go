@@ -110,6 +110,8 @@ func main() {
 	aiSummaryService := ai.NewSummaryService(aiClient, aiTools, pool, summaryCache)
 	aiSearchService := ai.NewSearchService(aiClient, pool)
 	aiForecastService := ai.NewForecastService(aiClient, pool, summaryCache)
+	aiTools.SetForecastService(aiForecastService)
+	aiTools.SetSearchService(aiSearchService)
 	aiChatService := ai.NewChatService(aiClient, aiTools)
 
 	// 4. Initialize River Background Job Queue (PostgreSQL-backed)
