@@ -164,7 +164,7 @@ const PHONETIC_REPLACEMENTS: Array<[RegExp, string]> = [
  * 3. Strips all remaining English alphabetic characters so no English is ever spoken.
  * 4. Normalizes whitespace and removes orphaned punctuation.
  */
-export function cleanTextForSpeech(raw: string, maxLen = 450): string {
+export function cleanTextForSpeech(raw: string, maxLen = 3000): string {
   if (!raw || typeof raw !== "string") return "";
 
   let text = raw

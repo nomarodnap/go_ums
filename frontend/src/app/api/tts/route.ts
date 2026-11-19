@@ -4,7 +4,7 @@ import { cleanTextForSpeech } from "@/lib/speech-utils";
 export const dynamic = "force-dynamic";
 
 function cleanForSpeech(raw: string): string {
-  return cleanTextForSpeech(raw, 500);
+  return cleanTextForSpeech(raw, 3000);
 }
 
 function splitIntoChunks(text: string, maxLen = 170): string[] {
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const rawText = searchParams.get("text") || "";
 
-  const text = cleanForSpeech(rawText).slice(0, 500);
+  const text = cleanForSpeech(rawText).slice(0, 3000);
   if (!text) {
     return NextResponse.json(
       { error: "Text parameter is required" },
@@ -67,14 +67,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const chunks = splitIntoChunks(text, 175);
-    // Limit to at most 4 chunks (~700 chars max speech per request)
-    const activeChunks = chunks.slice(0, 4);
+    const chunks = splitIntoChunks(text, 170).slice(0, 20);
+    const buffers = (
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          try {
+            return await fetchGoogleTTSAudio(chunk);
+          } catch (err) {
+            console.warn(`[TTS Chunk Error] chunk failed: "${chunk.slice(0, 30)}..."`, err);
+            return null;
+          }
+        })
+      )
+    ).filter((b): b is Buffer => b !== null && b.length > 0);
 
-    const buffers: Buffer[] = [];
-    for (const chunk of activeChunks) {
-      const buf = await fetchGoogleTTSAudio(chunk);
-      buffers.push(buf);
+    if (buffers.length === 0) {
+      throw new Error("Failed to generate any audio buffers from TTS upstream");
     }
 
     const combined = Buffer.concat(buffers);
@@ -100,7 +108,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const rawText = typeof body?.text === "string" ? body.text : "";
-    const text = cleanForSpeech(rawText).slice(0, 500);
+    const text = cleanForSpeech(rawText).slice(0, 3000);
 
     if (!text) {
       return NextResponse.json(
@@ -109,11 +117,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const chunks = splitIntoChunks(text, 175).slice(0, 4);
-    const buffers: Buffer[] = [];
-    for (const chunk of chunks) {
-      const buf = await fetchGoogleTTSAudio(chunk);
-      buffers.push(buf);
+    const chunks = splitIntoChunks(text, 170).slice(0, 20);
+    const buffers = (
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          try {
+            return await fetchGoogleTTSAudio(chunk);
+          } catch (err) {
+            console.warn(`[TTS Chunk Error] chunk failed: "${chunk.slice(0, 30)}..."`, err);
+            return null;
+          }
+        })
+      )
+    ).filter((b): b is Buffer => b !== null && b.length > 0);
+
+    if (buffers.length === 0) {
+      throw new Error("Failed to generate any audio buffers from TTS upstream");
     }
 
     const combined = Buffer.concat(buffers);

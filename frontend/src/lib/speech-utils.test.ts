@@ -66,4 +66,12 @@ describe("cleanTextForSpeech", () => {
     expect(cleaned).not.toContain("()");
     expect(cleaned).not.toMatch(/[a-zA-Z]/);
   });
+
+  it("does not truncate long messages so Tara can speak the complete response", () => {
+    const sentence = "รายงานสรุปภาพรวมค่าสาธารณูปโภคประจำเดือนนี้มีรายละเอียดที่ต้องตรวจสอบอย่างครบถ้วนค่ะ ";
+    const longRaw = sentence.repeat(15); // ~1,200+ characters
+    const cleaned = cleanTextForSpeech(longRaw);
+    expect(cleaned.length).toBeGreaterThan(1000);
+    expect(cleaned).toContain(sentence.trim());
+  });
 });
