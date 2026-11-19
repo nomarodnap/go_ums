@@ -7,32 +7,26 @@ function cleanForSpeech(raw: string): string {
   return cleanTextForSpeech(raw, 500);
 }
 
-function splitIntoChunks(text: string, maxLen = 175): string[] {
-  if (text.length <= maxLen) return [text];
+function splitIntoChunks(text: string, maxLen = 170): string[] {
+  if (text.length <= maxLen) return [text.trim()];
   const chunks: string[] = [];
-  const sentences = text.split(/(?<=[.!?\n\r])\s+|(?<=[,])\s+/);
+  const parts = text.split(/(?<=[.!?\n\r,])\s+|\s+/).filter(Boolean);
   let current = "";
 
-  for (const s of sentences) {
-    if ((current + " " + s).trim().length <= maxLen) {
-      current = (current + " " + s).trim();
+  for (const part of parts) {
+    if ((current ? current + " " + part : part).length <= maxLen) {
+      current = current ? current + " " + part : part;
     } else {
-      if (current) chunks.push(current);
-      if (s.length > maxLen) {
-        const words = s.split(" ");
-        let sub = "";
-        for (const w of words) {
-          if ((sub + " " + w).trim().length <= maxLen) {
-            sub = (sub + " " + w).trim();
-          } else {
-            if (sub) chunks.push(sub);
-            sub = w.slice(0, maxLen);
-          }
-        }
-        if (sub) chunks.push(sub);
+      if (current) {
+        chunks.push(current);
         current = "";
+      }
+      if (part.length <= maxLen) {
+        current = part;
       } else {
-        current = s;
+        for (let i = 0; i < part.length; i += maxLen) {
+          chunks.push(part.slice(i, i + maxLen));
+        }
       }
     }
   }

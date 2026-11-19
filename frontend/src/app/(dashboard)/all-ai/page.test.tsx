@@ -62,6 +62,16 @@ describe("AllAIAssistantPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    if (typeof window !== "undefined") {
+      window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-audio");
+      window.URL.revokeObjectURL = vi.fn();
+    }
+    global.fetch = vi.fn().mockImplementation((url) => {
+      if (typeof url === "string" && url.includes("/api/tts")) {
+        return Promise.resolve(new Response(new Blob(["mock-audio"]), { status: 200 }));
+      }
+      return Promise.resolve(new Response(null, { status: 200 }));
+    });
     mockStatusResult = {
       data: {
         enabled: true,

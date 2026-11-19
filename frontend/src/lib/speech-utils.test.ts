@@ -30,6 +30,25 @@ describe("cleanTextForSpeech", () => {
     expect(cleaned).toContain("ยูเอ็มเอส");
   });
 
+  it("converts audit keys and route paths to Thai speech equivalents", () => {
+    const raw = "ตรวจพบบิล (is_late_receive) หรือเกินกำหนด (OVERDUE) ในเมนู /audits และ /bills ค่ะ";
+    const cleaned = cleanTextForSpeech(raw);
+    expect(cleaned).not.toMatch(/[a-zA-Z]/);
+    expect(cleaned).toContain("รับบิลช้า");
+    expect(cleaned).toContain("ค้างชำระ");
+    expect(cleaned).toContain("ตรวจสอบความผิดปกติ");
+    expect(cleaned).toContain("รายการค่าใช้จ่าย");
+  });
+
+  it("converts utility providers like PEA, PWA, NT to Thai equivalents", () => {
+    const raw = "ค่าไฟ PEA และค่าน้ำ PWA มีรอบบิล NT ประจำเดือนค่ะ";
+    const cleaned = cleanTextForSpeech(raw);
+    expect(cleaned).not.toMatch(/[a-zA-Z]/);
+    expect(cleaned).toContain("กฟภ.");
+    expect(cleaned).toContain("กปภ.");
+    expect(cleaned).toContain("เอ็นที");
+  });
+
   it("converts symbols like %, ฿, & into Thai words", () => {
     const raw = "ยอดค้างชำระเพิ่มขึ้น 15% คิดเป็น ฿50,000 & มีความผิดปกติ";
     const cleaned = cleanTextForSpeech(raw);

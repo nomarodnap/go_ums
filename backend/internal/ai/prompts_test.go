@@ -77,7 +77,7 @@ func TestBuildSystemPromptNongTharaPersona(t *testing.T) {
 		"/settings",
 		"/audits",
 		"/budgets",
-		"ห้ามตอบหรือพูดภาษาอังกฤษแทรกโดยเด็ดขาด 100%",
+		"ห้ามตอบหรือพูดภาษาอังกฤษแทรกโดยเด็ดขาด",
 		"ระบบจะแปลงข้อความคำตอบเป็นเสียงพูดภาษาไทย",
 	}
 

@@ -313,10 +313,6 @@ export default function AllAIAssistantPage() {
 
     try {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.lang = "th-TH";
-      utterance.rate = 1.05;
-
       const voices = window.speechSynthesis.getVoices();
       const thaiVoice = voices.find(
         (v) =>
@@ -326,9 +322,22 @@ export default function AllAIAssistantPage() {
           v.name.includes("Premwadee") ||
           v.name.includes("Niwat")
       );
-      if (thaiVoice) {
-        utterance.voice = thaiVoice;
+
+      // CRITICAL: If no Thai voice is installed on the system (e.g. Windows default English voices),
+      // DO NOT speak with an English voice! Speaking Thai with Microsoft David/Zira sounds like English gibberish.
+      if (!thaiVoice) {
+        console.warn(
+          "[SpeechSynthesis] No Thai voice available on system. Skipping local speech to prevent English voice playback."
+        );
+        setIsSpeaking(false);
+        setEmotion("idle");
+        return;
       }
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = "th-TH";
+      utterance.rate = 1.05;
+      utterance.voice = thaiVoice;
 
       utterance.onstart = () => {
         setIsSpeaking(true);
@@ -343,16 +352,13 @@ export default function AllAIAssistantPage() {
       };
       window.speechSynthesis.speak(utterance);
     } catch {
-      setIsSpeaking(true);
-      speechTimeoutRef.current = setTimeout(() => {
-        setIsSpeaking(false);
-        setEmotion("idle");
-      }, 3500);
+      setIsSpeaking(false);
+      setEmotion("idle");
     }
   };
 
   // High-Fidelity Thai Speech Synthesis Helper
-  const speakThai = (rawText: string) => {
+  const speakThai = async (rawText: string) => {
     if (typeof window === "undefined") return;
     const clean = cleanTextForSpeech(rawText);
     if (!clean) return;
@@ -374,9 +380,20 @@ export default function AllAIAssistantPage() {
     // Stop any existing sound
     stopSpeaking();
 
-    // Stream genuine Thai neural speech from /api/tts
+    // Stream genuine Thai neural speech from /api/tts via POST blob
     try {
-      const audioUrl = `/api/tts?text=${encodeURIComponent(clean)}`;
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: clean }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`TTS API returned status ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
 
@@ -386,13 +403,16 @@ export default function AllAIAssistantPage() {
       audio.onended = () => {
         setIsSpeaking(false);
         setEmotion("idle");
+        URL.revokeObjectURL(audioUrl);
       };
       audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
         tryFallbackSpeechSynthesis(clean);
       };
 
-      audio.play().catch((err) => {
+      await audio.play().catch((err) => {
         console.warn("[TTS Playback blocked / fallback]", err);
+        URL.revokeObjectURL(audioUrl);
         tryFallbackSpeechSynthesis(clean);
       });
     } catch {
