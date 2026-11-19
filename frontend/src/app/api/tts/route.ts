@@ -1,19 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { cleanTextForSpeech } from "@/lib/speech-utils";
 
 export const dynamic = "force-dynamic";
 
 function cleanForSpeech(raw: string): string {
-  return raw
-    .replace(/[*#`_~]/g, " ")
-    .replace(/https?:\/\/\S+/g, "")
-    // Remove emojis
-    .replace(
-      /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
-      ""
-    )
-    .replace(/[-•|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return cleanTextForSpeech(raw, 500);
 }
 
 function splitIntoChunks(text: string, maxLen = 175): string[] {

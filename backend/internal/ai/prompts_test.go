@@ -77,6 +77,8 @@ func TestBuildSystemPromptNongTharaPersona(t *testing.T) {
 		"/settings",
 		"/audits",
 		"/budgets",
+		"ห้ามตอบหรือพูดภาษาอังกฤษแทรกโดยเด็ดขาด 100%",
+		"ระบบจะแปลงข้อความคำตอบเป็นเสียงพูดภาษาไทย",
 	}
 
 	for _, phrase := range expectedPhrases {

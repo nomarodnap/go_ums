@@ -42,6 +42,7 @@ import {
 import { useGetCurrentUser } from "@/lib/api/generated/auth/auth";
 import { cn } from "@/lib/utils";
 import { TaraAvatar, type TaraEmotion } from "@/components/ai-chat/tara-avatar";
+import { cleanTextForSpeech } from "@/lib/speech-utils";
 
 interface UIStateMessage extends AIChatMessage {
   id: string;
@@ -96,20 +97,6 @@ function extractErrorMessage(err: unknown): string {
     }
   }
   return "ไม่สามารถเชื่อมต่อผู้ช่วย AI ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง";
-}
-
-function cleanTextForSpeech(text: string): string {
-  return text
-    .replace(/[*#`_~]/g, " ")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(
-      /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
-      ""
-    )
-    .replace(/[-•|]/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, 450)
-    .trim();
 }
 
 function formatDuration(totalSeconds: number): string {
